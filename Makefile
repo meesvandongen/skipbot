@@ -11,7 +11,7 @@ TARGET ?=
 CARGO_FLAGS := $(if $(TARGET),--target $(TARGET),)
 FEATURE_FLAGS := $(if $(FEATURES),--features $(FEATURES),)
 
-.PHONY: build release check test fmt fmt-check clippy doc clean train simulate bench
+.PHONY: build release check test fmt fmt-check clippy doc clean train simulate play bench
 
 build:
 	$(CARGO) build $(CARGO_FLAGS) $(FEATURE_FLAGS)
@@ -45,6 +45,9 @@ train:
 
 simulate:
 	$(CARGO) run --release $(CARGO_FLAGS) $(FEATURE_FLAGS) --bin simulate -- $(SIM_ARGS)
+
+play:
+	$(CARGO) run --release $(CARGO_FLAGS) $(FEATURE_FLAGS) --bin simulate -- human heuristic heuristic heuristic --visualize
 
 bench:
 	$(CARGO) bench $(CARGO_FLAGS) $(FEATURE_FLAGS)

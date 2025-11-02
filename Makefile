@@ -1,8 +1,10 @@
 # SkipBot project makefile providing convenient cargo commands
 
 CARGO ?= cargo
-TRAIN_ARGS ?= --games 16 --epochs 5 --bots 1 --players 4 --batch-size 16 --validation-split 0.1 --exploration 0.05
-SIM_ARGS ?= --games 100 --players 4
+TRAIN_ARGS ?= --games 64 --epochs 10 --bots 1 --players 4 --batch-size 32 --validation-split 0.1 --exploration 0.05 --max-turns 2000
+# Default simulate args: provide 4 non-interactive bots to avoid blocking for human input
+# You can override by running: make simulate SIM_ARGS="heuristic random policy:128x3 heuristic --max-turns 2000"
+SIM_ARGS ?= heuristic heuristic heuristic heuristic --max-turns 2000 --visualize
 FEATURES ?=
 TARGET ?=
 

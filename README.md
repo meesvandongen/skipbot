@@ -16,6 +16,17 @@ This will:
 - Save checkpoints under `checkpoints/` (e.g. `policy-bot-01.bin`).
 - Write Burn dashboard logs per epoch under `checkpoints/burn-run-bot-XX/{train,valid}/epoch-N/`.
 
+Current make defaults (tuned for a reasonably sized run without exhausting memory):
+
+- `--games 64` per bot
+- `--epochs 10`
+- `--bots 1`
+- `--batch-size 32`
+- `--players 4`
+- `--validation-split 0.1`
+- `--exploration 0.05`
+- `--max-turns 2000` (safety cap to prevent pathological long games)
+
 If you want a larger run, override the defaults (be mindful of memory):
 
 ```powershell
@@ -33,6 +44,6 @@ You can point Burn's dashboard viewer at the `checkpoints/burn-run-bot-XX` direc
 
 ## Troubleshooting
 
-- Memory: On Windows, large datasets can exhaust memory. Use smaller `--games`, `--bots`, and `--batch-size` values (see Makefile defaults). Start small, then scale up gradually.
+- Memory: On Windows, large datasets can exhaust memory. Use smaller `--games`, `--bots`, and `--batch-size` values (see Makefile defaults). Start small, then scale up gradually. The default `--max-turns 2000` cap helps avoid runaway games; you can increase it if you need longer trajectories.
 - Reproducibility: Control randomness with `--seed`.
 - Output directory: Use `--output <dir>` to change where checkpoints and dashboard logs are written.

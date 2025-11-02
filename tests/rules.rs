@@ -59,7 +59,10 @@ fn configurable_stock_size_override() -> Result<(), GameError> {
     // Override to very small stock to simplify games.
     let deck = card::full_deck();
     let deck_len = deck.len();
-    let game = GameBuilder::new(2)?.with_stock_size(5).with_deck(deck).build()?;
+    let game = GameBuilder::new(2)?
+        .with_stock_size(5)
+        .with_deck(deck)
+        .build()?;
     let view0 = game.state_view(0)?;
     assert_eq!(view0.settings.stock_size, 5);
     assert_eq!(view0.players[0].stock_count, 5);
@@ -174,5 +177,49 @@ fn skipbo_wildcard_support() -> Result<(), GameError> {
     )?; // plays 4
     let view = game.state_view(0)?;
     assert_eq!(view.build_piles[0].next_value, 5);
+    Ok(())
+}
+
+#[test]
+fn refills_hand_after_emptying_during_play() -> Result<(), GameError> {
+    // Prepare a draw sequence where the first five cards are 1..=5 so they can all be played.
+    // Then provide five additional cards to be drawn immediately after the hand empties.
+    let draw_sequence = vec![
+        // These five will be used for the refill after emptying the hand
+        Card::Number(12),
+        Card::Number(12),
+        Card::Number(12),
+        Card::Number(12),
+        Card::Number(12),
+        // The last five (tail) will be drawn at the start of the turn via pop order,
+        // resulting in a hand of [1,2,3,4,5] at indices 0..=4.
+        Card::Number(5),
+        Card::Number(4),
+        Card::Number(3),
+        Card::Number(2),
+        Card::Number(1),
+    ];
+    // Minimal stock prefixes; the helper fills the rest with 12s as needed.
+    let stock_p0 = vec![Card::Number(12)];
+    let stock_p1 = vec![Card::Number(12)];
+    let deck = build_deck(2, &draw_sequence, &[stock_p0, stock_p1]);
+
+    let mut game = GameBuilder::new(2)?.with_deck(deck).build()?;
+    let current = game.current_player();
+    // Hand initially has 5 cards (1..=5) in ascending playable order due to pop order.
+    for _ in 0..5 {
+        game.apply_action(
+            current,
+            Action::Play {
+                source: CardSource::Hand(0),
+                build_pile: 0,
+            },
+        )?;
+    }
+    // After playing the 5th card from hand, the hand should be immediately refilled to 5 cards.
+    let view = game.state_view(current)?;
+    assert_eq!(view.build_piles[0].cards.len(), 5);
+    assert_eq!(view.hand.len(), 5, "hand should be refilled to 5 after emptying during play");
+    assert_eq!(view.draw_pile_count, 0, "refill should consume the remaining draw cards");
     Ok(())
 }

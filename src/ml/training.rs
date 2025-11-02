@@ -156,8 +156,8 @@ pub struct PolicyBatch<B: AutodiffBackend> {
 
 impl<B: AutodiffBackend> PolicyBatch<B> {
     pub fn new(states: Tensor<B, 2>, targets: Tensor<B, 2>, masks: Tensor<B, 2>) -> Self {
-    let batch = states.shape().dims[0];
-    let weights = Tensor::<B, 2>::ones([batch, 1], &B::Device::default());
+        let batch = states.shape().dims[0];
+        let weights = Tensor::<B, 2>::ones([batch, 1], &B::Device::default());
         Self {
             states,
             targets,
@@ -209,10 +209,8 @@ impl<B: AutodiffBackend> PolicyBatch<B> {
             TensorData::new(masks, [batch_size, ActionSpace::MAX]),
             &device,
         );
-        let weights_tensor = Tensor::<B, 2>::from_data(
-            TensorData::new(weights, [batch_size, 1]),
-            &device,
-        );
+        let weights_tensor =
+            Tensor::<B, 2>::from_data(TensorData::new(weights, [batch_size, 1]), &device);
         Self::with_weights(states_tensor, targets_tensor, masks_tensor, weights_tensor)
     }
 
@@ -290,9 +288,7 @@ impl<B: AutodiffBackend> PolicyTrainer<B> {
         let grads = loss.backward();
         let grads = GradientsParams::from_grads(grads, &self.model);
         let model = self.model.clone();
-        self.model = self
-            .optimizer
-            .step(self.learning_rate, model, grads);
+        self.model = self.optimizer.step(self.learning_rate, model, grads);
         self.step += 1;
         Self::tensor_to_f32(loss)
     }
@@ -410,8 +406,7 @@ mod tests {
     #[test]
     fn trainer_produces_finite_loss() {
         let model = PolicyNetwork::<Backend>::default();
-        let mut trainer =
-            PolicyTrainer::with_config(model, AdamConfig::new(), 1.0e-3);
+        let mut trainer = PolicyTrainer::with_config(model, AdamConfig::new(), 1.0e-3);
         let game = GameBuilder::new(2).expect("builder").build().expect("game");
         let view = game.state_view(0).expect("state view");
         let states = StateEncoder::encode_tensor::<Backend>(&view);

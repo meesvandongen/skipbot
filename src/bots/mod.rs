@@ -1,9 +1,27 @@
 pub mod heuristic_1;
+pub mod heuristic_2;
+pub mod heuristic_3;
+pub mod heuristic_4;
+pub mod heuristic_5;
+pub mod heuristic_6;
+pub mod heuristic_7;
+pub mod heuristic_8;
+pub mod heuristic_9;
 pub mod human;
 pub mod policy_1;
 pub mod random;
+pub mod registry;
 
 pub use heuristic_1::HeuristicBot;
+pub use heuristic_2::Heuristic2Bot;
+pub use heuristic_3::Heuristic3Bot;
+pub use heuristic_4::Heuristic4Bot;
+pub use heuristic_5::Heuristic5Bot;
+pub use heuristic_6::Heuristic6Bot;
+pub use heuristic_7::Heuristic7Bot;
+pub use heuristic_8::Heuristic8Bot;
+pub use heuristic_9::Heuristic9Bot;
 pub use human::HumanBot;
 pub use policy_1::PolicyBot;
 pub use random::RandomBot;
+pub use registry::{create_bot_from_spec, label_for_spec, parse_policy_spec};

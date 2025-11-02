@@ -2,13 +2,9 @@ use std::env;
 use std::error::Error;
 use std::process;
 
-use burn_ndarray::NdArray;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
-
 use skipbot::{
-    Bot, DEFAULT_HIDDEN, DEFAULT_STACK, Game, GameError, HeuristicBot, HumanBot, PolicyBot,
-    PolicyNetwork, RandomBot, describe_action, render_state,
+    Bot, DEFAULT_HIDDEN, DEFAULT_STACK, Game, GameError, create_bot_from_spec, describe_action,
+    render_state,
 };
 
 const DEFAULT_SEED: u64 = 0xDEC0_1DED_5EED_F00D;
@@ -72,7 +68,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let mut bots: Vec<Box<dyn Bot>> = Vec::with_capacity(num_players);
     for (index, spec) in bot_specs.iter().enumerate() {
-        let bot = create_bot(spec, index, seed)?;
+        let bot = create_bot_from_spec(spec, index, seed)?;
         bots.push(bot);
     }
 
@@ -117,57 +113,6 @@ fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-type PolicyBackend = NdArray<f32>;
-
-fn create_bot(spec: &str, index: usize, seed: u64) -> Result<Box<dyn Bot>, Box<dyn Error>> {
-    let spec_lower = spec.to_ascii_lowercase();
-    if spec_lower.starts_with("human") {
-        let name = spec
-            .split_once(':')
-            .map(|(_, name)| name.trim().to_string());
-        let name = name.unwrap_or_else(|| format!("Human {index}"));
-        Ok(Box::new(HumanBot::new(name)))
-    } else if spec_lower.starts_with("random") {
-        let custom_seed = spec
-            .split_once(':')
-            .and_then(|(_, value)| value.parse::<u64>().ok())
-            .unwrap_or(seed ^ ((index as u64 + 1) * 0x9E37_79B9));
-        Ok(Box::new(RandomBot::new(StdRng::seed_from_u64(custom_seed))))
-    } else if spec_lower.starts_with("heuristic") {
-        Ok(Box::new(HeuristicBot::default()))
-    } else if spec_lower.starts_with("policy") {
-        let (hidden, depth) = parse_policy_spec(spec)?;
-        let network = PolicyNetwork::<PolicyBackend>::new(hidden, depth);
-        Ok(Box::new(PolicyBot::new(network)))
-    } else {
-        Err(format!("unrecognized bot spec: {spec}").into())
-    }
-}
-
-fn parse_policy_spec(spec: &str) -> Result<(usize, usize), Box<dyn Error>> {
-    if let Some((_, config)) = spec.split_once(':') {
-        if config.is_empty() {
-            return Ok((DEFAULT_HIDDEN, DEFAULT_STACK));
-        }
-        if let Some((hidden, depth)) = config.split_once('x') {
-            let hidden = hidden
-                .parse::<usize>()
-                .map_err(|_| format!("invalid hidden size in spec '{spec}'"))?;
-            let depth = depth
-                .parse::<usize>()
-                .map_err(|_| format!("invalid depth in spec '{spec}'"))?;
-            Ok((hidden, depth))
-        } else {
-            let hidden = config
-                .parse::<usize>()
-                .map_err(|_| format!("invalid hidden size in spec '{spec}'"))?;
-            Ok((hidden, DEFAULT_STACK))
-        }
-    } else {
-        Ok((DEFAULT_HIDDEN, DEFAULT_STACK))
-    }
-}
-
 fn print_usage() {
     println!("Usage: simulate [OPTIONS] [BOT ...]");
     println!("  --visualize           Show the game state and chosen actions each turn");
@@ -178,6 +123,7 @@ fn print_usage() {
     println!("  human[:name]          Interactive human-controlled player");
     println!("  random[:seed]         Random bot with optional per-bot seed");
     println!("  heuristic             Deterministic rule-based baseline bot");
+    println!("  heuristic2            Improved heuristic with stock-first planning");
     println!(
         "  policy[:hidden[xdepth]]  Burn policy network bot (default hidden {DEFAULT_HIDDEN}, depth {DEFAULT_STACK})"
     );

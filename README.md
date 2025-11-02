@@ -84,3 +84,10 @@ This keeps existing binaries and tests working while allowing new bot files to b
 - Reproducibility: Control randomness with `--seed`.
 - Win-rate runs: If you see "aborted" games in the win-rate summary, increase `--max-turns` or omit untrained `policy` bots.
 - Output directory: Use `--output <dir>` to change where checkpoints and dashboard logs are written.
+
+## TODO heuristic bot improvements
+
+- Only play cards from hand, avoid playing cards from discard.
+- SB card usage strategy.
+- Equalize piles in order to minimize potential actions for opponents.
+- Try to play all 5 cards in a turn if possible to get extra turn.

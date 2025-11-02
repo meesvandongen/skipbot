@@ -5,7 +5,6 @@ use crate::bot::Bot;
 use crate::ml::{ActionSpace, PolicyNetwork, StateEncoder};
 use crate::state::GameStateView;
 
-
 /// Policy-driven bot backed by a Burn neural network.
 pub struct PolicyBot<B: Backend> {
     policy: PolicyNetwork<B>,

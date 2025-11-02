@@ -2,18 +2,18 @@ use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use burn::data::dataloader::Progress;
 use burn::module::{AutodiffModule, Module};
 use burn::optim::AdamConfig;
-use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use burn::optim::LearningRate;
+use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use burn_autodiff::Autodiff;
 use burn_ndarray::NdArray;
-use burn::data::dataloader::Progress;
+use burn_train::Interrupter;
 use burn_train::logger::{FileMetricLogger, MetricLogger};
 use burn_train::metric::{MetricEntry, NumericEntry};
-use burn_train::renderer::{MetricState, MetricsRendererTraining, TrainingProgress};
 use burn_train::renderer::tui::TuiMetricsRenderer;
-use burn_train::Interrupter;
+use burn_train::renderer::{MetricState, MetricsRendererTraining, TrainingProgress};
 use clap::{Parser, ValueEnum};
 use rand::{Rng, RngCore, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
@@ -207,12 +207,13 @@ fn run() -> Result<(), Box<dyn Error>> {
         let valid_log_dir = run_dir.join("valid");
         fs::create_dir_all(&train_log_dir)?;
         fs::create_dir_all(&valid_log_dir)?;
-    let mut train_logger = FileMetricLogger::new_train(&train_log_dir);
-    let mut valid_logger = FileMetricLogger::new_eval(&valid_log_dir);
+        let mut train_logger = FileMetricLogger::new_train(&train_log_dir);
+        let mut valid_logger = FileMetricLogger::new_eval(&valid_log_dir);
 
         // Initialize the Burn TUI renderer to visualize training progress live.
         // Note: We keep file logging active and also push updates to the TUI.
-        let mut tui = TuiMetricsRenderer::new(Interrupter::default(), Some(args.epochs)).persistent();
+        let mut tui =
+            TuiMetricsRenderer::new(Interrupter::default(), Some(args.epochs)).persistent();
 
         let learning_rate: LearningRate = args.learning_rate as f64;
         let optim_config = AdamConfig::new();
@@ -295,10 +296,10 @@ fn run() -> Result<(), Box<dyn Error>> {
             // Advance epoch for the training logger (evaluation logger must not advance epochs)
             train_logger.end_epoch(metrics.epoch);
         }
-    // Notify TUI that training has ended and keep it open until the user exits.
-    let _ = tui.on_train_end(None);
+        // Notify TUI that training has ended and keep it open until the user exits.
+        let _ = tui.on_train_end(None);
 
-    let final_metrics = history.last();
+        let final_metrics = history.last();
         let final_train_loss = final_metrics.map(|m| m.train_loss).unwrap_or(0.0);
         let final_validation_loss = final_metrics.and_then(|m| m.validation_loss);
 

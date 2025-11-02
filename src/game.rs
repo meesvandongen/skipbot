@@ -26,7 +26,11 @@ pub struct GameConfig {
 impl GameConfig {
     pub fn new(num_players: usize, seed: u64) -> Result<Self, GameError> {
         GameSettings::new(num_players)?;
-        Ok(Self { num_players, seed, stock_size: None })
+        Ok(Self {
+            num_players,
+            seed,
+            stock_size: None,
+        })
     }
 }
 
@@ -252,7 +256,9 @@ impl Game {
         let mut settings = GameSettings::new(config.num_players)?;
         if let Some(custom_stock) = config.stock_size {
             if custom_stock == 0 {
-                return Err(GameError::InvalidConfiguration("stock size must be positive"));
+                return Err(GameError::InvalidConfiguration(
+                    "stock size must be positive",
+                ));
             }
             settings.stock_size = custom_stock;
         }
@@ -342,9 +348,13 @@ impl Game {
                 .into());
             }
         }
-        let card = {
+        // Take the card from the specified source and track if the hand became empty
+        let (card, hand_just_emptied) = {
             let player_state = &mut self.players[self.current_player];
-            Self::take_from_source(player_state, source)?
+            let was_from_hand = matches!(source, CardSource::Hand(_));
+            let taken = Self::take_from_source(player_state, source)?;
+            let hand_just_emptied = was_from_hand && player_state.hand.is_empty();
+            (taken, hand_just_emptied)
         };
         self.build_piles[build_pile_idx].push(card);
         if self.build_piles[build_pile_idx].is_complete() {
@@ -357,6 +367,18 @@ impl Game {
                 winner: self.current_player,
             };
             self.turn_phase = TurnPhase::GameOver;
+        }
+        // If the player just emptied their hand by playing their last card,
+        // immediately draw back up to the hand size and continue the turn.
+        if !matches!(self.status, GameStatus::Finished { .. }) && hand_just_emptied {
+            let current = self.current_player;
+            let target = self.settings.hand_size;
+            while self.players[current].hand.len() < target {
+                match self.draw_card() {
+                    Some(next_card) => self.players[current].hand.push(next_card),
+                    None => break,
+                }
+            }
         }
         Ok(())
     }

@@ -1,5 +1,5 @@
-use rand::seq::SliceRandom;
 use rand::Rng;
+use rand::seq::SliceRandom;
 
 use crate::action::Action;
 use crate::bot::Bot;
@@ -24,4 +24,3 @@ impl<R: Rng> Bot for RandomBot<R> {
             .expect("at least one legal action must be available")
     }
 }
-

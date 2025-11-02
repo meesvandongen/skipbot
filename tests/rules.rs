@@ -55,6 +55,21 @@ fn stock_size_six_players() -> Result<(), GameError> {
 }
 
 #[test]
+fn configurable_stock_size_override() -> Result<(), GameError> {
+    // Override to very small stock to simplify games.
+    let deck = card::full_deck();
+    let deck_len = deck.len();
+    let game = GameBuilder::new(2)?.with_stock_size(5).with_deck(deck).build()?;
+    let view0 = game.state_view(0)?;
+    assert_eq!(view0.settings.stock_size, 5);
+    assert_eq!(view0.players[0].stock_count, 5);
+    assert_eq!(view0.players[1].stock_count, 5);
+    assert_eq!(view0.hand.len(), 5);
+    assert_eq!(view0.draw_pile_count, deck_len - (5 * 2) - 5);
+    Ok(())
+}
+
+#[test]
 fn build_pile_cycles_and_recycles() -> Result<(), GameError> {
     let draw_sequence = vec![
         Card::Number(5),

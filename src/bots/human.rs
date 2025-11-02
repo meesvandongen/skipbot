@@ -1,3 +1,9 @@
+use std::io::{self, Write};
+
+use crate::action::Action;
+use crate::bot::Bot;
+use crate::state::GameStateView;
+use crate::visualize::{describe_action, render_state};
 
 /// Interactive bot that queries a human via standard input.
 pub struct HumanBot {

@@ -104,6 +104,11 @@ struct TrainArgs {
     /// Teacher policy used to generate training data.
     #[arg(long, value_enum, default_value_t = TeacherKind::Heuristic)]
     teacher: TeacherKind,
+
+    /// Optional override for per-player stock size (default rules when omitted).
+    /// Useful for simplifying early training by reducing game length.
+    #[arg(long)]
+    stock_size: Option<usize>,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
@@ -133,6 +138,7 @@ struct PolicyMetadata {
     runner_weight: f32,
     draw_weight: f32,
     max_turns: Option<usize>,
+    stock_size: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -320,6 +326,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             runner_weight: args.runner_weight,
             draw_weight: args.draw_weight,
             max_turns: args.max_turns,
+            stock_size: args.stock_size,
         };
         let checkpoint = PolicyCheckpoint { metadata, weights };
         let bytes = bincode::serde::encode_to_vec(&checkpoint, bincode::config::standard())?;
@@ -350,6 +357,11 @@ fn validate_args(args: &TrainArgs) -> Result<(), Box<dyn Error>> {
     if args.learning_rate <= 0.0 {
         return Err("learning rate must be positive".into());
     }
+    if let Some(stock) = args.stock_size {
+        if stock == 0 {
+            return Err("stock-size must be positive".into());
+        }
+    }
     Ok(())
 }
 
@@ -375,7 +387,10 @@ fn collect_dataset(args: &TrainArgs, dataset_seed: u64) -> Result<PolicyDataset,
     let mut dataset = PolicyDataset::new();
     for game_index in 0..args.games_per_bot {
         let game_seed = rng.next_u64();
-        let builder = GameBuilder::new(args.players)?.with_seed(game_seed);
+        let mut builder = GameBuilder::new(args.players)?.with_seed(game_seed);
+        if let Some(stock) = args.stock_size {
+            builder = builder.with_stock_size(stock);
+        }
         let mut game = builder.build()?;
         let mut bots = build_teacher_bots(args.teacher, args.players, dataset_seed, &mut rng);
         let mut trajectory: Vec<PendingSample> = Vec::new();

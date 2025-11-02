@@ -5,13 +5,14 @@ TRAIN_ARGS ?= --games 64 --epochs 10 --bots 1 --players 4 --batch-size 32 --vali
 # Default simulate args: provide 4 non-interactive bots to avoid blocking for human input
 # You can override by running: make simulate SIM_ARGS="heuristic random policy:128x3 heuristic --max-turns 2000"
 SIM_ARGS ?= heuristic heuristic heuristic heuristic --max-turns 2000 --visualize
+WINRATE_ARGS ?= --games 200 --max-turns 2000 heuristic heuristic heuristic heuristic
 FEATURES ?=
 TARGET ?=
 
 CARGO_FLAGS := $(if $(TARGET),--target $(TARGET),)
 FEATURE_FLAGS := $(if $(FEATURES),--features $(FEATURES),)
 
-.PHONY: build release check test fmt fmt-check clippy doc clean train simulate play bench
+.PHONY: build release check test fmt fmt-check clippy doc clean train simulate winrate play bench
 
 build:
 	$(CARGO) build $(CARGO_FLAGS) $(FEATURE_FLAGS)
@@ -45,6 +46,9 @@ train:
 
 simulate:
 	$(CARGO) run --release $(CARGO_FLAGS) $(FEATURE_FLAGS) --bin simulate -- $(SIM_ARGS)
+
+winrate:
+	$(CARGO) run --release $(CARGO_FLAGS) $(FEATURE_FLAGS) --bin winrate -- $(WINRATE_ARGS)
 
 play:
 	$(CARGO) run --release $(CARGO_FLAGS) $(FEATURE_FLAGS) --bin simulate -- human heuristic heuristic heuristic --visualize

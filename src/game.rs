@@ -20,12 +20,13 @@ const DEFAULT_SEED: u64 = 0x5EED_5EED_5EED_5EED;
 pub struct GameConfig {
     pub num_players: usize,
     pub seed: u64,
+    pub stock_size: Option<usize>,
 }
 
 impl GameConfig {
     pub fn new(num_players: usize, seed: u64) -> Result<Self, GameError> {
         GameSettings::new(num_players)?;
-        Ok(Self { num_players, seed })
+        Ok(Self { num_players, seed, stock_size: None })
     }
 }
 
@@ -50,6 +51,13 @@ impl GameBuilder {
 
     pub fn with_deck(mut self, deck: Vec<Card>) -> Self {
         self.deck = Some(deck);
+        self
+    }
+
+    /// Override the default stock size (per player). When not set, the standard
+    /// rules apply: 30 cards for up to 4 players, otherwise 20.
+    pub fn with_stock_size(mut self, stock_size: usize) -> Self {
+        self.config.stock_size = Some(stock_size);
         self
     }
 
@@ -241,7 +249,13 @@ impl Game {
 
     fn from_builder(builder: GameBuilder) -> Result<Self, GameError> {
         let GameBuilder { config, deck } = builder;
-        let settings = GameSettings::new(config.num_players)?;
+        let mut settings = GameSettings::new(config.num_players)?;
+        if let Some(custom_stock) = config.stock_size {
+            if custom_stock == 0 {
+                return Err(GameError::InvalidConfiguration("stock size must be positive"));
+            }
+            settings.stock_size = custom_stock;
+        }
         let mut rng = StdRng::seed_from_u64(config.seed);
         let mut deck = if let Some(deck) = deck {
             deck

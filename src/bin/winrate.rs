@@ -56,6 +56,11 @@ struct Args {
     #[arg(long = "max-turns", default_value_t = 2000)]
     max_turns: usize,
 
+    /// Optional override for per-player stock size (default rules when omitted).
+    /// Useful to shorten games for quick benchmarking.
+    #[arg(long = "stock-size")]
+    stock_size: Option<usize>,
+
     /// Player bot specs: e.g., heuristic random policy:128x3 (2-6 total)
     bots: Vec<String>,
 }
@@ -84,6 +89,12 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
         return Err("human players are not supported in winrate runs".into());
     }
 
+    if let Some(stock) = args.stock_size {
+        if stock == 0 {
+            return Err("stock-size must be positive".into());
+        }
+    }
+
     // Aggregate counts across all games.
     let mut wins_per_label: HashMap<String, usize> = HashMap::new();
     let mut seats_per_label: HashMap<String, usize> = HashMap::new();
@@ -106,8 +117,9 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
         indices.shuffle(&mut seat_rng);
 
         // Create game with mixed seed.
-        let deck_seed = mix_seed(base_seed, game_idx as u64, 0x5EED_15);
-        let builder = Game::builder(players_per_game)?.with_seed(deck_seed);
+    let deck_seed = mix_seed(base_seed, game_idx as u64, 0x5EED_15);
+    let mut builder = Game::builder(players_per_game)?.with_seed(deck_seed);
+    if let Some(stock) = args.stock_size { builder = builder.with_stock_size(stock); }
         let mut game = builder.build()?;
 
         // Build and seat bots.

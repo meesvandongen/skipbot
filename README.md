@@ -67,6 +67,17 @@ cargo run --bin winrate -- --games 50 heuristic random
 cargo run --bin winrate -- --games 20 heuristic random policy --max-turns 1000
 ```
 
+## Bots module layout
+
+Bots are now organized under `src/bots/` to make it easy to add variants (e.g., heuristic_2, policy_2).
+
+- In code, import them via the crate root:
+
+  - `use skipbot::{Bot, RandomBot};`
+  - `use skipbot::{HeuristicBot, HumanBot, PolicyBot};`
+
+This keeps existing binaries and tests working while allowing new bot files to be added under `src/bots/`.
+
 ## Troubleshooting
 
 - Memory: On Windows, large datasets can exhaust memory. Use smaller `--games`, `--bots`, and `--batch-size` values (see Makefile defaults). Start small, then scale up gradually. The default `--max-turns 2000` cap helps avoid runaway games; you can increase it if you need longer trajectories.

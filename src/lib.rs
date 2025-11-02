@@ -2,6 +2,7 @@
 
 pub mod action;
 pub mod bot;
+pub mod bots;
 pub mod card;
 pub mod error;
 pub mod game;
@@ -10,7 +11,8 @@ pub mod state;
 pub mod visualize;
 
 pub use crate::action::{Action, CardSource};
-pub use crate::bot::{Bot, HeuristicBot, HumanBot, PolicyBot, RandomBot};
+pub use crate::bot::{Bot};
+pub use crate::bots::{HeuristicBot, HumanBot, PolicyBot, RandomBot};
 pub use crate::card::Card;
 pub use crate::error::{GameError, InvalidAction};
 pub use crate::game::{Game, GameBuilder, GameConfig};

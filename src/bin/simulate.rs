@@ -2,10 +2,14 @@ use std::env;
 use std::error::Error;
 use std::process;
 
+use burn_ndarray::NdArray;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use skipbot::{Bot, Game, GameError, HumanBot, RandomBot, describe_action, render_state};
+use skipbot::{
+    Bot, DEFAULT_HIDDEN, DEFAULT_STACK, Game, GameError, HeuristicBot, HumanBot, PolicyBot,
+    PolicyNetwork, RandomBot, describe_action, render_state,
+};
 
 const DEFAULT_SEED: u64 = 0xDEC0_1DED_5EED_F00D;
 
@@ -113,6 +117,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+type PolicyBackend = NdArray<f32>;
+
 fn create_bot(spec: &str, index: usize, seed: u64) -> Result<Box<dyn Bot>, Box<dyn Error>> {
     let spec_lower = spec.to_ascii_lowercase();
     if spec_lower.starts_with("human") {
@@ -127,8 +133,38 @@ fn create_bot(spec: &str, index: usize, seed: u64) -> Result<Box<dyn Bot>, Box<d
             .and_then(|(_, value)| value.parse::<u64>().ok())
             .unwrap_or(seed ^ ((index as u64 + 1) * 0x9E37_79B9));
         Ok(Box::new(RandomBot::new(StdRng::seed_from_u64(custom_seed))))
+    } else if spec_lower.starts_with("heuristic") {
+        Ok(Box::new(HeuristicBot::default()))
+    } else if spec_lower.starts_with("policy") {
+        let (hidden, depth) = parse_policy_spec(spec)?;
+        let network = PolicyNetwork::<PolicyBackend>::new(hidden, depth);
+        Ok(Box::new(PolicyBot::new(network)))
     } else {
         Err(format!("unrecognized bot spec: {spec}").into())
+    }
+}
+
+fn parse_policy_spec(spec: &str) -> Result<(usize, usize), Box<dyn Error>> {
+    if let Some((_, config)) = spec.split_once(':') {
+        if config.is_empty() {
+            return Ok((DEFAULT_HIDDEN, DEFAULT_STACK));
+        }
+        if let Some((hidden, depth)) = config.split_once('x') {
+            let hidden = hidden
+                .parse::<usize>()
+                .map_err(|_| format!("invalid hidden size in spec '{spec}'"))?;
+            let depth = depth
+                .parse::<usize>()
+                .map_err(|_| format!("invalid depth in spec '{spec}'"))?;
+            Ok((hidden, depth))
+        } else {
+            let hidden = config
+                .parse::<usize>()
+                .map_err(|_| format!("invalid hidden size in spec '{spec}'"))?;
+            Ok((hidden, DEFAULT_STACK))
+        }
+    } else {
+        Ok((DEFAULT_HIDDEN, DEFAULT_STACK))
     }
 }
 
@@ -141,5 +177,9 @@ fn print_usage() {
     println!("Bot entries (2-6 total):");
     println!("  human[:name]          Interactive human-controlled player");
     println!("  random[:seed]         Random bot with optional per-bot seed");
+    println!("  heuristic             Deterministic rule-based baseline bot");
+    println!(
+        "  policy[:hidden[xdepth]]  Burn policy network bot (default hidden {DEFAULT_HIDDEN}, depth {DEFAULT_STACK})"
+    );
     println!("If no bots are provided, defaults to one human and one random bot.");
 }

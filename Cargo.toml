@@ -7,3 +7,9 @@ edition = "2024"
 rand = { version = "0.8", features = ["std"] }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
+bincode = "2"
+burn = { version = "0.19", default-features = false, features = ["std", "tui", "train", "vision", "wgpu", "fusion"] }
+burn-ndarray = { version = "0.19", features = ["std"] }
+burn-autodiff = "0.19"
+burn-train = { version = "0.19", features = ["tui", "sys-metrics"] }
+clap = { version = "4.5", features = ["derive"] }

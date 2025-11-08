@@ -7,6 +7,7 @@ pub mod card;
 pub mod error;
 pub mod game;
 pub mod ml;
+pub mod score;
 pub mod state;
 pub mod visualize;
 
@@ -23,4 +24,5 @@ pub use crate::ml::{
 pub use crate::state::{
     BuildPileView, GameSettings, GameStateView, GameStatus, PlayerPublicState, TurnPhase,
 };
+pub use crate::score::winner_points;
 pub use crate::visualize::{DescribeOptions, VisualOptions, describe_action, render_state};

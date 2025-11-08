@@ -44,7 +44,13 @@ You can point Burn's dashboard viewer at the `checkpoints/burn-run-bot-XX` direc
 
 ## Win-rate benchmarking and charts
 
-You can simulate many games between any mix of bots and render a bar chart of per-seat win rates:
+You can simulate many games between any mix of bots and render a bar chart of per-seat win rates. The textual summary also includes a scoring metric (winner-only points):
+
+Scoring rule:
+
+- Winner receives 25 base points plus 5 points for each card remaining in all opponents' stock piles at game end.
+- Non-winners receive 0 points for that game.
+- Drawn / aborted games award no points.
 
 ```powershell
 cargo run --release --bin winrate -- --games 200 heuristic random policy --out winrates.png --max-turns 2000

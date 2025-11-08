@@ -66,6 +66,7 @@ pub struct PlayerPublicState {
 pub enum GameStatus {
     Ongoing,
     Finished { winner: PlayerId },
+    Draw,
 }
 
 /// Current phase of the active turn.

@@ -47,6 +47,7 @@ pub fn render_state_with_options(state: &GameStateView, options: VisualOptions) 
         GameStatus::Finished { winner } => {
             format!("Finished (winner: Player {winner})")
         }
+        GameStatus::Draw => String::from("Finished (draw)"),
     };
     let _ = writeln!(out, "Game status: {status}");
     let _ = writeln!(out, "Phase: {:?}", state.phase);

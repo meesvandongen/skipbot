@@ -81,6 +81,9 @@ pub struct Game {
     recycle_pile: Vec<Card>,
     turn_phase: TurnPhase,
     rng: StdRng,
+    // Stalemate detection
+    stale_turns: usize,
+    played_this_turn: bool,
 }
 
 impl Game {
@@ -144,7 +147,7 @@ impl Game {
     }
 
     pub fn legal_actions(&self, player: PlayerId) -> Result<Vec<Action>, GameError> {
-        if matches!(self.status, GameStatus::Finished { .. }) {
+        if self.is_finished() {
             return Ok(Vec::new());
         }
         if player >= self.players.len() {
@@ -210,7 +213,7 @@ impl Game {
     }
 
     pub fn apply_action(&mut self, player: PlayerId, action: Action) -> Result<(), GameError> {
-        if matches!(self.status, GameStatus::Finished { .. }) {
+        if self.is_finished() {
             return Err(GameError::GameOver);
         }
         if player >= self.players.len() {
@@ -241,7 +244,7 @@ impl Game {
     }
 
     pub fn is_finished(&self) -> bool {
-        matches!(self.status, GameStatus::Finished { .. })
+        !matches!(self.status, GameStatus::Ongoing)
     }
 
     pub fn winner(&self) -> Option<PlayerId> {
@@ -299,6 +302,8 @@ impl Game {
             recycle_pile: Vec::new(),
             turn_phase: TurnPhase::AwaitingAction,
             rng,
+            stale_turns: 0,
+            played_this_turn: false,
         };
 
         game.begin_turn();
@@ -306,11 +311,12 @@ impl Game {
     }
 
     fn begin_turn(&mut self) {
-        if matches!(self.status, GameStatus::Finished { .. }) {
+        if self.is_finished() {
             self.turn_phase = TurnPhase::GameOver;
             return;
         }
         self.turn_phase = TurnPhase::AwaitingAction;
+        self.played_this_turn = false;
         let current = self.current_player;
         let hand_target = self.settings.hand_size;
         while self.players[current].hand.len() < hand_target {
@@ -322,7 +328,21 @@ impl Game {
     }
 
     fn advance_turn(&mut self) {
-        if matches!(self.status, GameStatus::Finished { .. }) {
+        if self.is_finished() {
+            self.turn_phase = TurnPhase::GameOver;
+            return;
+        }
+        // Stalemate accounting at end of the just-completed turn
+        let no_draws_available = self.draw_pile.is_empty() && self.recycle_pile.is_empty();
+        if self.played_this_turn {
+            self.stale_turns = 0;
+        } else if no_draws_available {
+            self.stale_turns += 1;
+        } else {
+            self.stale_turns = 0;
+        }
+        if no_draws_available && self.stale_turns >= self.stalemate_turn_limit() {
+            self.status = GameStatus::Draw;
             self.turn_phase = TurnPhase::GameOver;
             return;
         }
@@ -356,6 +376,8 @@ impl Game {
             let hand_just_emptied = was_from_hand && player_state.hand.is_empty();
             (taken, hand_just_emptied)
         };
+        self.played_this_turn = true;
+        self.stale_turns = 0;
         self.build_piles[build_pile_idx].push(card);
         if self.build_piles[build_pile_idx].is_complete() {
             let completed = self.build_piles[build_pile_idx].take_cards();
@@ -370,7 +392,7 @@ impl Game {
         }
         // If the player just emptied their hand by playing their last card,
         // immediately draw back up to the hand size and continue the turn.
-        if !matches!(self.status, GameStatus::Finished { .. }) && hand_just_emptied {
+        if !self.is_finished() && hand_just_emptied {
             let current = self.current_player;
             let target = self.settings.hand_size;
             while self.players[current].hand.len() < target {
@@ -410,6 +432,12 @@ impl Game {
     fn reshuffle_recycle(&mut self) {
         self.recycle_pile.shuffle(&mut self.rng);
         self.draw_pile.append(&mut self.recycle_pile);
+    }
+
+    fn stalemate_turn_limit(&self) -> usize {
+        // Declare a draw if for two full rounds no plays are made and no draws are possible.
+        // Tunable heuristic; kept simple and deterministic.
+        self.settings.num_players * 2
     }
 
     fn peek_source<'a>(player: &'a PlayerState, source: CardSource) -> Result<&'a Card, GameError> {

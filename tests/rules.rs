@@ -223,3 +223,32 @@ fn refills_hand_after_emptying_during_play() -> Result<(), GameError> {
     assert_eq!(view.draw_pile_count, 0, "refill should consume the remaining draw cards");
     Ok(())
 }
+
+#[test]
+fn detects_stalemate_draw_when_no_draws_and_no_plays() -> Result<(), GameError> {
+    // Construct a deck with no draw pile cards and stocks that cannot play (all 12s).
+    // With empty hands and no draws, players can only EndTurn; after two rounds, it should be a draw.
+    let num_players = 2;
+    let draw_sequence: Vec<Card> = vec![];
+    // Minimal stock prefixes; helper fills remaining with 12s, which are unplayable at game start (needs 1).
+    let stock_p0 = vec![Card::Number(12)];
+    let stock_p1 = vec![Card::Number(12)];
+    let deck = build_deck(num_players, &draw_sequence, &[stock_p0, stock_p1]);
+    let mut game = GameBuilder::new(num_players)?.with_deck(deck).build()?;
+
+    // At start, player 0 has empty hand (no draws available), so only EndTurn is legal.
+    for _ in 0..(num_players * 2) {
+        let current = game.current_player();
+        let actions = game.legal_actions(current)?;
+        assert!(actions.iter().any(|a| matches!(a, skipbot::Action::EndTurn)));
+        game.apply_action(current, skipbot::Action::EndTurn)?;
+        if matches!(game.status(), GameStatus::Draw) {
+            break;
+        }
+    }
+
+    assert!(matches!(game.status(), GameStatus::Draw));
+    assert!(game.is_finished());
+    assert!(game.winner().is_none());
+    Ok(())
+}

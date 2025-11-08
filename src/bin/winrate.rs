@@ -12,6 +12,7 @@ use rand::seq::SliceRandom;
 // no need to import Shift when drawing inline
 
 use skipbot::{Bot, Game, GameError};
+use skipbot::winner_points;
 use skipbot::{create_bot_from_spec, label_for_spec};
 
 /// Default base seed for deterministic runs.
@@ -115,6 +116,7 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
     // Aggregate counts across all games.
     let mut wins_per_label: HashMap<String, usize> = HashMap::new();
     let mut seats_per_label: HashMap<String, usize> = HashMap::new();
+    let mut points_per_label: HashMap<String, u64> = HashMap::new();
     let mut aborted_games: usize = 0;
 
     // Decision-time accounting per bot label.
@@ -189,7 +191,13 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
 
         if let Some(winner) = game.winner() {
             let label = labels[winner].clone();
-            *wins_per_label.entry(label).or_default() += 1;
+            *wins_per_label.entry(label.clone()).or_default() += 1;
+
+            // Compute scoring: 25 points + 5 points per card in opponents' stock piles
+            // Use a final state view from the winner's perspective.
+            let view = game.state_view(winner)?;
+            let pts = winner_points(&view, winner) as u64;
+            *points_per_label.entry(label).or_default() += pts;
         } else {
             aborted_games += 1;
         }
@@ -222,13 +230,24 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
     });
 
     // Print textual summary.
-    println!("Win rates (per-seat):");
+    println!("Win rates (per-seat) with scoring:");
     for (label, rate, wins, seats) in &results {
-        println!("  {label:<12}  {wins}/{seats}  ({:.2}%)", rate * 100.0);
+        let total_points = *points_per_label.get(label).unwrap_or(&0u64);
+        let avg_points = if *seats > 0 {
+            total_points as f64 / (*seats as f64)
+        } else {
+            0.0
+        };
+        println!(
+            "  {label:<12}  {wins}/{seats}  ({:.2}%)   avg pts: {:>6.2}   total pts: {}",
+            rate * 100.0,
+            avg_points,
+            total_points
+        );
     }
     if aborted_games > 0 {
         println!(
-            "\nNote: {aborted_games} game(s) aborted due to --max-turns cap (counted as draws)."
+            "\nNote: {aborted_games} game(s) ended without a winner (draws or timeouts)."
         );
     }
 

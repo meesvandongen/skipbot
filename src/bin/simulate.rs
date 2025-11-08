@@ -104,8 +104,12 @@ fn run() -> Result<(), Box<dyn Error>> {
         turns += 1;
     }
 
-    if let Some(winner) = game.winner() {
-        println!("Game finished. Winner: Player {winner}.");
+    if game.is_finished() {
+        if let Some(winner) = game.winner() {
+            println!("Game finished. Winner: Player {winner}.");
+        } else {
+            println!("Game finished in a draw.");
+        }
     } else {
         println!("Simulation stopped before completion.");
     }

@@ -257,12 +257,7 @@ impl<B: AutodiffBackend> PolicyTrainer<B> {
         optimizer: OptimizerAdaptor<Adam, PolicyNetwork<B>, B>,
         learning_rate: LearningRate,
     ) -> Self {
-        Self {
-            model,
-            optimizer,
-            learning_rate,
-            step: 0,
-        }
+        Self { model, optimizer, learning_rate, step: 0 }
     }
 
     pub fn with_config(
@@ -281,6 +276,18 @@ impl<B: AutodiffBackend> PolicyTrainer<B> {
     pub fn optimizer(&self) -> &OptimizerAdaptor<Adam, PolicyNetwork<B>, B> {
         &self.optimizer
     }
+
+    /// Get the current learning rate used by the optimizer.
+    pub fn learning_rate(&self) -> LearningRate {
+        self.learning_rate
+    }
+
+    /// Update the learning rate used by the optimizer.
+    pub fn set_learning_rate(&mut self, lr: LearningRate) {
+        self.learning_rate = lr;
+    }
+
+    // Intentionally no gradient clipping at the moment (Burn API agnostic here).
 
     pub fn train_step(&mut self, batch: PolicyBatch<B>) -> f32 {
         let (loss_sum, weight_sum) = Self::loss_components(&self.model, &batch);
@@ -316,6 +323,8 @@ impl<B: AutodiffBackend> PolicyTrainer<B> {
             0.0
         }
     }
+
+    // No-op clipping placeholder removed.
 
     pub fn fit<R: Rng>(
         &mut self,
@@ -360,6 +369,73 @@ impl<B: AutodiffBackend> PolicyTrainer<B> {
                 batches,
                 samples,
             });
+        }
+        history
+    }
+
+    /// Same as `fit`, but streams epoch metrics through a user-provided callback.
+    /// The callback returns `true` to continue training or `false` to stop early.
+    pub fn fit_streaming<R: Rng, F: FnMut(&TrainingEpochMetrics) -> bool, G: FnMut(&PolicyNetwork<B>, &TrainingEpochMetrics)>(
+        &mut self,
+        train: &mut PolicyDataset,
+        validation: Option<&PolicyDataset>,
+        config: TrainingLoopConfig,
+        rng: &mut R,
+        mut on_epoch: F,
+        mut on_best: Option<G>,
+    ) -> Vec<TrainingEpochMetrics> {
+        assert!(config.batch_size > 0, "batch size must be positive");
+        let mut history = Vec::with_capacity(config.epochs);
+        let mut best_val: Option<f32> = None;
+        for epoch in 0..config.epochs {
+            train.shuffle(rng);
+            let mut weighted_loss = 0.0;
+            let mut weight_sum = 0.0;
+            let mut batches = 0usize;
+            let mut samples = 0usize;
+            for chunk in train.batches(config.batch_size) {
+                if chunk.is_empty() {
+                    continue;
+                }
+                let batch = PolicyBatch::<B>::from_samples(chunk);
+                let batch_weight = batch.weight_sum();
+                if batch_weight <= 0.0 {
+                    continue;
+                }
+                let loss = self.train_step(batch);
+                weighted_loss += loss * batch_weight;
+                weight_sum += batch_weight;
+                batches += 1;
+                samples += chunk.len();
+            }
+            let train_loss = if weight_sum > 0.0 {
+                weighted_loss / weight_sum
+            } else {
+                0.0
+            };
+            let validation_loss = validation.map(|set| self.evaluate(set, config.batch_size));
+            let metrics = TrainingEpochMetrics {
+                epoch: epoch + 1,
+                train_loss,
+                validation_loss,
+                batches,
+                samples,
+            };
+            // On best validation so far, notify the callback to allow checkpointing.
+            if let Some(val) = metrics.validation_loss {
+                let improved = best_val.map(|b| val < b).unwrap_or(true);
+                if improved {
+                    best_val = Some(val);
+                    if let Some(ref mut cb) = on_best {
+                        cb(&self.model, &metrics);
+                    }
+                }
+            }
+            let keep_going = on_epoch(&metrics);
+            history.push(metrics);
+            if !keep_going {
+                break;
+            }
         }
         history
     }

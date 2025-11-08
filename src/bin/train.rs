@@ -40,75 +40,63 @@ struct TrainArgs {
     /// Number of players per game during data collection.
     #[arg(long, default_value_t = 4)]
     players: usize,
-
     /// Number of self-play games to collect per bot.
     #[arg(long = "games", default_value_t = 512)]
     games_per_bot: usize,
-
     /// Mini-batch size used during optimization.
     #[arg(long, default_value_t = 64)]
     batch_size: usize,
-
     /// Number of training epochs per bot.
     #[arg(long, default_value_t = 20)]
     epochs: usize,
-
     /// Number of policies to train.
     #[arg(long, default_value_t = 4)]
     bots: usize,
-
     /// Hidden layer width for the policy network.
     #[arg(long, default_value_t = DEFAULT_HIDDEN)]
     hidden: usize,
-
     /// Number of hidden layers (stack depth) for the policy network.
     #[arg(long, default_value_t = DEFAULT_STACK)]
     depth: usize,
-
     /// Learning rate passed to the Adam optimizer.
     #[arg(long, default_value_t = 1.0e-3)]
     learning_rate: f32,
-
     /// Fraction of the dataset to hold out for validation (0.0 - 0.5).
     #[arg(long, default_value_t = 0.1)]
     validation_split: f32,
-
     /// Directory where checkpoints will be written.
     #[arg(long)]
     output: Option<PathBuf>,
-
     /// Exploration probability applied during data collection.
     #[arg(long, default_value_t = 0.05)]
     exploration: f32,
-
     /// Weight multiplier applied to moves made by the winning player.
     #[arg(long, default_value_t = 2.0)]
     winner_weight: f32,
-
     /// Weight multiplier applied to moves made by non-winning players.
     #[arg(long, default_value_t = 1.0)]
     runner_weight: f32,
-
     /// Weight multiplier applied when a game finishes without a winner.
     #[arg(long, default_value_t = 1.0)]
     draw_weight: f32,
-
     /// Optional cap on turns per game during collection.
     #[arg(long)]
     max_turns: Option<usize>,
-
     /// Master seed controlling reproducibility.
     #[arg(long, default_value_t = 0xA11C_E5EED_F00Du64)]
     seed: u64,
-
     /// Teacher policy used to generate training data.
     #[arg(long, value_enum, default_value_t = TeacherKind::Heuristic)]
     teacher: TeacherKind,
-
     /// Optional override for per-player stock size (default rules when omitted).
-    /// Useful for simplifying early training by reducing game length.
     #[arg(long)]
     stock_size: Option<usize>,
+    /// Early stopping patience (epochs without validation improvement). Disabled when omitted.
+    #[arg(long)]
+    patience: Option<usize>,
+    /// Resume training from a checkpoint (.bin) created by this program.
+    #[arg(long)]
+    resume: Option<PathBuf>,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
@@ -139,6 +127,8 @@ struct PolicyMetadata {
     draw_weight: f32,
     max_turns: Option<usize>,
     stock_size: Option<usize>,
+    patience: Option<usize>,
+    best_validation_loss: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -164,22 +154,67 @@ fn main() {
 fn run() -> Result<(), Box<dyn Error>> {
     let args = TrainArgs::parse();
     validate_args(&args)?;
-    let output_dir = args
-        .output
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("checkpoints"));
+    // Load checkpoint if resuming.
+    let resume_checkpoint: Option<PolicyCheckpoint> = if let Some(ref path) = args.resume {
+        Some(load_checkpoint(path)?)
+    } else { None };
+    // Resolve output directory: explicit flag > parent of resume file > default.
+    let output_dir = if let Some(dir) = args.output.clone() {
+        dir
+    } else if let Some(ref ckpt_path) = args.resume {
+        ckpt_path.parent().unwrap_or(Path::new(".")) .to_path_buf()
+    } else {
+        PathBuf::from("checkpoints")
+    };
     fs::create_dir_all(&output_dir)?;
 
     let mut master_rng = StdRng::seed_from_u64(args.seed);
-    for bot_index in 0..args.bots {
-        let dataset_seed = master_rng.next_u64();
+    // If resuming, we always train a single bot (the checkpointed one).
+    let total_bots = if resume_checkpoint.is_some() { 1 } else { args.bots };
+    for bot_index in 0..total_bots {
+        // Determine dataset seed and hyperparameters when resuming.
+        let dataset_seed = resume_checkpoint.as_ref().map(|c| c.metadata.dataset_seed).unwrap_or_else(|| master_rng.next_u64());
+        let hidden = resume_checkpoint.as_ref().map(|c| c.metadata.hidden).unwrap_or(args.hidden);
+        let depth = resume_checkpoint.as_ref().map(|c| c.metadata.depth).unwrap_or(args.depth);
+        let players = resume_checkpoint.as_ref().map(|c| c.metadata.players).unwrap_or(args.players);
+        let games_per_bot = resume_checkpoint.as_ref().map(|c| c.metadata.games).unwrap_or(args.games_per_bot);
+        let teacher = resume_checkpoint.as_ref().map(|c| c.metadata.teacher).unwrap_or(args.teacher);
+        let exploration = resume_checkpoint.as_ref().map(|c| c.metadata.exploration).unwrap_or(args.exploration);
+        let winner_weight = resume_checkpoint.as_ref().map(|c| c.metadata.winner_weight).unwrap_or(args.winner_weight);
+        let runner_weight = resume_checkpoint.as_ref().map(|c| c.metadata.runner_weight).unwrap_or(args.runner_weight);
+        let draw_weight = resume_checkpoint.as_ref().map(|c| c.metadata.draw_weight).unwrap_or(args.draw_weight);
+        let max_turns = resume_checkpoint.as_ref().and_then(|c| c.metadata.max_turns).or(args.max_turns);
+        let stock_size = resume_checkpoint.as_ref().and_then(|c| c.metadata.stock_size).or(args.stock_size);
         println!(
             "\n=== Training bot {}/{} (dataset seed {:#x}) ===",
             bot_index + 1,
-            args.bots,
+            total_bots,
             dataset_seed
         );
-        let raw_dataset = collect_dataset(&args, dataset_seed)?;
+        // Build an effective args view for dataset collection using resolved values.
+        let effective_args = TrainArgs {
+            players,
+            games_per_bot,
+            batch_size: args.batch_size,
+            epochs: args.epochs,
+            bots: 1,
+            hidden,
+            depth,
+            learning_rate: args.learning_rate,
+            validation_split: args.validation_split,
+            output: Some(output_dir.clone()),
+            exploration,
+            winner_weight,
+            runner_weight,
+            draw_weight,
+            max_turns,
+            seed: args.seed,
+            teacher,
+            stock_size,
+            patience: args.patience,
+            resume: args.resume.clone(),
+        };
+        let raw_dataset = collect_dataset(&effective_args, dataset_seed)?;
         let total_samples = raw_dataset.len();
         if total_samples == 0 {
             return Err("data collection returned an empty dataset".into());
@@ -217,117 +252,175 @@ fn run() -> Result<(), Box<dyn Error>> {
 
         let learning_rate: LearningRate = args.learning_rate as f64;
         let optim_config = AdamConfig::new();
-        let model = PolicyNetwork::<TrainBackend>::new(args.hidden, args.depth);
+        let mut model = PolicyNetwork::<TrainBackend>::new(hidden, depth);
+        // If resuming, load weights from checkpoint bytes.
+        if let Some(ref ckpt) = resume_checkpoint {
+            let device = <TrainBackend as burn::tensor::backend::Backend>::Device::default();
+            let record = BinBytesRecorder::<FullPrecisionSettings>::new()
+                .load::<<PolicyNetwork<TrainBackend> as Module<TrainBackend>>::Record>(
+                    ckpt.weights.clone(),
+                    &device,
+                )?;
+            model = model.load_record(record);
+            println!("  resumed from checkpoint (hidden={}, depth={}, best_val={:?})", ckpt.metadata.hidden, ckpt.metadata.depth, ckpt.metadata.best_validation_loss);
+        }
         let mut trainer = PolicyTrainer::with_config(model, optim_config, learning_rate);
         let loop_config = TrainingLoopConfig {
             epochs: args.epochs,
             batch_size: args.batch_size,
         };
         let mut training_rng = StdRng::seed_from_u64(dataset_seed ^ 0x9E37_79B9);
-        let history = trainer.fit(
+        // Streaming training with optional early stopping and best checkpointing
+    let mut best_val: Option<f32> = resume_checkpoint.as_ref().and_then(|c| c.metadata.best_validation_loss);
+        let mut epochs_no_improve: usize = 0;
+        let mut final_metrics: Option<TrainingEpochMetrics> = None;
+        let train_len = train_dataset.len();
+        // Closure invoked when a new best validation loss is found (passed the model reference).
+        let mut on_best_checkpoint = |model: &PolicyNetwork<TrainBackend>, metrics: &TrainingEpochMetrics| {
+            if let Some(val_loss) = metrics.validation_loss {
+                let record: PolicyRecord = model.clone().valid().into_record();
+                if let Ok(best_weights) = BinBytesRecorder::<FullPrecisionSettings>::new().record(record, ()) {
+                    let best_meta = PolicyMetadata {
+                        hidden,
+                        depth,
+                        learning_rate: args.learning_rate,
+                        epochs: metrics.epoch,
+                        batch_size: args.batch_size,
+                        players,
+                        games: games_per_bot,
+                        seed: args.seed,
+                        dataset_seed,
+                        train_samples: train_len,
+                        validation_samples: validation_dataset.as_ref().map(|ds| ds.len()).unwrap_or(0),
+                        final_train_loss: metrics.train_loss,
+                        final_validation_loss: Some(val_loss),
+                        exploration,
+                        teacher,
+                        winner_weight,
+                        runner_weight,
+                        draw_weight,
+                        max_turns,
+                        stock_size,
+                        patience: args.patience,
+                        best_validation_loss: Some(val_loss),
+                    };
+                    let best_checkpoint = PolicyCheckpoint { metadata: best_meta, weights: best_weights };
+                    if let Ok(bytes) = bincode::serde::encode_to_vec(&best_checkpoint, bincode::config::standard()) {
+                        let filename = format!("policy-bot-{:02}-best.bin", bot_index + 1);
+                        let path = output_dir.join(filename);
+                        let _ = fs::write(&path, bytes);
+                        println!("  best checkpoint updated -> {}", display_path(&path));
+                    }
+                }
+            }
+        };
+
+        let history = trainer.fit_streaming(
             &mut train_dataset,
             validation_dataset.as_ref(),
             loop_config,
             &mut training_rng,
-        );
-        // Emit metrics to both stdout and the Burn metric logs per epoch
-        for metrics in &history {
-            log_epoch(metrics);
-
-            // Log training loss as a numeric aggregated value for this epoch
-            if metrics.batches > 0 && metrics.samples > 0 {
-                // burn-train NumericEntry::Aggregated serializes as "<value>,<numel>"
-                let serialize = format!("{:.8},{}", metrics.train_loss as f64, metrics.samples);
-                let entry = MetricEntry::new(
-                    "Loss".to_string().into(),
-                    format!(
-                        "epoch {:.6} (batches {}, samples {})",
-                        metrics.train_loss, metrics.batches, metrics.samples
-                    ),
-                    serialize,
-                );
-                train_logger.log(&entry);
-
-                // Update TUI with training loss (numeric value) and render progress
-                let num = NumericEntry::Value(metrics.train_loss as f64);
-                let train_state = MetricState::Numeric(entry.clone(), num);
-                tui.update_train(train_state);
-                let prog = TrainingProgress {
-                    progress: Progress {
-                        items_processed: metrics.samples,
-                        items_total: train_dataset.len(),
-                    },
-                    epoch: metrics.epoch,
-                    epoch_total: args.epochs,
-                    iteration: metrics.batches,
-                };
-                tui.render_train(prog);
-            }
-
-            // Log validation loss if available, using dataset size as aggregation weight
-            if let Some(val_loss) = metrics.validation_loss {
-                if let Some(val_ds) = validation_dataset.as_ref() {
-                    let val_samples = val_ds.len().max(1);
-                    let serialize = format!("{:.8},{}", val_loss as f64, val_samples);
+            |metrics| {
+                // Suppress stdout printing during training to avoid disrupting the TUI.
+                final_metrics = Some(metrics.clone());
+                if metrics.batches > 0 && metrics.samples > 0 {
+                    let serialize = format!("{:.8},{}", metrics.train_loss as f64, metrics.samples);
                     let entry = MetricEntry::new(
                         "Loss".to_string().into(),
-                        format!("epoch {:.6} (samples {})", val_loss, val_samples),
+                        format!(
+                            "epoch {:.6} (batches {}, samples {})",
+                            metrics.train_loss, metrics.batches, metrics.samples
+                        ),
                         serialize,
                     );
-                    valid_logger.log(&entry);
-
-                    // Update TUI with validation loss and render validation progress
-                    let num_val = NumericEntry::Value(val_loss as f64);
-                    let valid_state = MetricState::Numeric(entry.clone(), num_val);
-                    tui.update_valid(valid_state);
-                    let vprog = TrainingProgress {
+                    train_logger.log(&entry);
+                    let num = NumericEntry::Value(metrics.train_loss as f64);
+                    let train_state = MetricState::Numeric(entry.clone(), num);
+                    tui.update_train(train_state);
+                    let prog = TrainingProgress {
                         progress: Progress {
-                            items_processed: val_samples,
-                            items_total: val_samples,
+                            items_processed: metrics.samples,
+                            items_total: train_len,
                         },
                         epoch: metrics.epoch,
                         epoch_total: args.epochs,
                         iteration: metrics.batches,
                     };
-                    tui.render_valid(vprog);
+                    tui.render_train(prog);
                 }
-            }
-
-            // Advance epoch for the training logger (evaluation logger must not advance epochs)
-            train_logger.end_epoch(metrics.epoch);
-        }
-        // Notify TUI that training has ended and keep it open until the user exits.
+                if let Some(val_loss) = metrics.validation_loss {
+                    if let Some(val_ds) = validation_dataset.as_ref() {
+                        let val_samples = val_ds.len().max(1);
+                        let serialize = format!("{:.8},{}", val_loss as f64, val_samples);
+                        let entry = MetricEntry::new(
+                            "Loss".to_string().into(),
+                            format!("epoch {:.6} (samples {})", val_loss, val_samples),
+                            serialize,
+                        );
+                        valid_logger.log(&entry);
+                        let num_val = NumericEntry::Value(val_loss as f64);
+                        let valid_state = MetricState::Numeric(entry.clone(), num_val);
+                        tui.update_valid(valid_state);
+                        let vprog = TrainingProgress {
+                            progress: Progress {
+                                items_processed: val_samples,
+                                items_total: val_samples,
+                            },
+                            epoch: metrics.epoch,
+                            epoch_total: args.epochs,
+                            iteration: metrics.batches,
+                        };
+                        tui.render_valid(vprog);
+                    }
+                    let improved = best_val.map(|b| val_loss < b).unwrap_or(true);
+                    if improved {
+                        best_val = Some(val_loss);
+                        epochs_no_improve = 0;
+                    } else if let Some(patience) = args.patience {
+                        epochs_no_improve += 1;
+                        if epochs_no_improve >= patience {
+                            train_logger.end_epoch(metrics.epoch);
+                            return false;
+                        }
+                    }
+                }
+                train_logger.end_epoch(metrics.epoch);
+                true
+            },
+            Some(&mut on_best_checkpoint),
+        );
         let _ = tui.on_train_end(None);
 
-        let final_metrics = history.last();
-        let final_train_loss = final_metrics.map(|m| m.train_loss).unwrap_or(0.0);
-        let final_validation_loss = final_metrics.and_then(|m| m.validation_loss);
+        let final_train_loss = final_metrics.as_ref().map(|m| m.train_loss).unwrap_or(0.0);
+        let final_validation_loss = final_metrics.as_ref().and_then(|m| m.validation_loss);
 
         let record: PolicyRecord = trainer.model().clone().valid().into_record();
         let weights = BinBytesRecorder::<FullPrecisionSettings>::new()
             .record(record, ())
             .map_err(|err| -> Box<dyn Error> { Box::new(err) })?;
         let metadata = PolicyMetadata {
-            hidden: args.hidden,
-            depth: args.depth,
+            hidden,
+            depth,
             learning_rate: args.learning_rate,
             epochs: args.epochs,
             batch_size: args.batch_size,
-            players: args.players,
-            games: args.games_per_bot,
+            players,
+            games: games_per_bot,
             seed: args.seed,
             dataset_seed,
-            train_samples: train_dataset.len(),
+            train_samples: train_len,
             validation_samples: validation_dataset.as_ref().map(|ds| ds.len()).unwrap_or(0),
             final_train_loss,
             final_validation_loss,
-            exploration: args.exploration,
-            teacher: args.teacher,
-            winner_weight: args.winner_weight,
-            runner_weight: args.runner_weight,
-            draw_weight: args.draw_weight,
-            max_turns: args.max_turns,
-            stock_size: args.stock_size,
+            exploration,
+            teacher,
+            winner_weight,
+            runner_weight,
+            draw_weight,
+            max_turns,
+            stock_size,
+            patience: args.patience,
+            best_validation_loss: best_val,
         };
         let checkpoint = PolicyCheckpoint { metadata, weights };
         let bytes = bincode::serde::encode_to_vec(&checkpoint, bincode::config::standard())?;
@@ -366,21 +459,19 @@ fn validate_args(args: &TrainArgs) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn log_epoch(metrics: &TrainingEpochMetrics) {
-    match metrics.validation_loss {
-        Some(val) => println!(
-            "  epoch {:>3}: train {:.6} | val {:.6} (batches {}, samples {})",
-            metrics.epoch, metrics.train_loss, val, metrics.batches, metrics.samples
-        ),
-        None => println!(
-            "  epoch {:>3}: train {:.6} (batches {}, samples {})",
-            metrics.epoch, metrics.train_loss, metrics.batches, metrics.samples
-        ),
-    }
+#[allow(dead_code)]
+fn log_epoch(_metrics: &TrainingEpochMetrics) {
+    // Intentionally suppressed to keep the TUI stable during training.
 }
 
 fn display_path(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+fn load_checkpoint(path: &Path) -> Result<PolicyCheckpoint, Box<dyn Error>> {
+    let bytes = fs::read(path)?;
+    let (ckpt, _): (PolicyCheckpoint, usize) = bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?;
+    Ok(ckpt)
 }
 
 fn collect_dataset(args: &TrainArgs, dataset_seed: u64) -> Result<PolicyDataset, GameError> {

@@ -12,6 +12,7 @@ use crate::bots::heuristic_6::Heuristic6Bot;
 use crate::bots::heuristic_7::Heuristic7Bot;
 use crate::bots::heuristic_8::Heuristic8Bot;
 use crate::bots::heuristic_9::Heuristic9Bot;
+use crate::bots::heuristic_10::Heuristic10Bot;
 use crate::{Bot, DEFAULT_HIDDEN, DEFAULT_STACK};
 use crate::{HeuristicBot, HumanBot, PolicyBot, PolicyNetwork, RandomBot};
 
@@ -66,6 +67,7 @@ pub fn parse_policy_spec(spec: &str) -> Result<(usize, usize), Box<dyn Error>> {
 /// - heuristic7
 /// - heuristic8
 /// - heuristic9
+/// - heuristic10
 pub fn create_bot_from_spec(
     spec: &str,
     index: usize,
@@ -100,6 +102,8 @@ pub fn create_bot_from_spec(
         Ok(Box::new(Heuristic8Bot::default()))
     } else if spec_lower.starts_with("heuristic9") {
         Ok(Box::new(Heuristic9Bot::default()))
+    } else if spec_lower.starts_with("heuristic10") {
+        Ok(Box::new(Heuristic10Bot::default()))
     } else if spec_lower.starts_with("heuristic") {
         Ok(Box::new(HeuristicBot::default()))
     } else if spec_lower.starts_with("policy") {

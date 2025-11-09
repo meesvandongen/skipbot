@@ -54,8 +54,8 @@ pub struct PlayerPublicState {
     pub id: PlayerId,
     pub stock_count: usize,
     pub stock_top: Option<Card>,
-    pub discard_tops: [Option<Card>; DISCARD_PILE_COUNT],
-    pub discard_counts: [usize; DISCARD_PILE_COUNT],
+    /// Full contents of each discard pile (bottom..top order).
+    pub discard_piles: [Vec<Card>; DISCARD_PILE_COUNT],
     pub hand_size: usize,
     pub is_current: bool,
     pub has_won: bool,

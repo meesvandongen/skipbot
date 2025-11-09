@@ -51,7 +51,11 @@ impl HeuristicBot {
             CardSource::Stock => Self::self_player(state).stock_top,
             CardSource::Discard(index) => {
                 let player = Self::self_player(state);
-                player.discard_tops.get(index).copied().flatten()
+                player
+                    .discard_piles
+                    .get(index)
+                    .and_then(|pile| pile.last())
+                    .copied()
             }
         };
         let Some(card) = card else {
@@ -98,16 +102,17 @@ impl HeuristicBot {
         };
         let player = Self::self_player(state);
         let existing_top = player
-            .discard_tops
+            .discard_piles
             .get(discard_pile)
-            .and_then(|value| *value);
+            .and_then(|pile| pile.last())
+            .copied();
         // Reward stacking the same value to enable future multi-plays.
         let duplicate_bonus = if existing_top == Some(card) { 600 } else { 0 };
         let pile_depth = player
-            .discard_counts
+            .discard_piles
             .get(discard_pile)
-            .copied()
-            .unwrap_or_default() as i32;
+            .map(|p| p.len() as i32)
+            .unwrap_or(0);
         // Slight preference by intrinsic card priority; dominated by depth control.
         let priority = Self::card_priority(card) * 12;
         // Discourage making discard stacks too tall/hard to free later.

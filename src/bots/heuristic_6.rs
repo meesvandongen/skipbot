@@ -34,13 +34,17 @@ impl Heuristic6Bot {
             return i32::MIN / 2;
         };
         let player = Self::self_player(state);
-        let existing_top = player.discard_tops.get(discard_pile).and_then(|v| *v);
+        let existing_top = player
+            .discard_piles
+            .get(discard_pile)
+            .and_then(|pile| pile.last())
+            .copied();
         let duplicate_bonus = if existing_top == Some(card) { 600 } else { 0 };
         let pile_depth = player
-            .discard_counts
+            .discard_piles
             .get(discard_pile)
-            .copied()
-            .unwrap_or_default() as i32;
+            .map(|p| p.len() as i32)
+            .unwrap_or(0);
         let spacing_penalty = pile_depth * 20;
         1_000 + duplicate_bonus - spacing_penalty - (hand_index as i32 * 10)
     }
@@ -132,13 +136,8 @@ impl Heuristic6Bot {
                 Card::SkipBo => skipbo_hands.push(idx),
             }
         }
-        for (d_idx, top) in Self::self_player(state)
-            .discard_tops
-            .iter()
-            .copied()
-            .enumerate()
-        {
-            if let Some(card) = top {
+        for (d_idx, pile) in Self::self_player(state).discard_piles.iter().enumerate() {
+            if let Some(card) = pile.last().copied() {
                 match card {
                     Card::Number(v) => by_value[v as usize].push(SourceKind::Discard(d_idx)),
                     Card::SkipBo => skipbo_discards.push(d_idx),
@@ -266,7 +265,7 @@ impl Heuristic6Bot {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,
                 },
-                CardSource::Discard(d) => match Self::self_player(state).discard_tops[d]? {
+                CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied()? {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,
                 },

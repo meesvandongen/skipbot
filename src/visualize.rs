@@ -95,11 +95,10 @@ pub fn render_state_with_options(state: &GameStateView, options: VisualOptions) 
             .unwrap_or_else(|| String::from("--"));
         let mut discard_parts = Vec::with_capacity(state.settings.discard_piles);
         for idx in 0..state.settings.discard_piles {
-            let top = player.discard_tops[idx]
-                .map(format_card)
-                .unwrap_or_else(|| String::from("--"));
+            let pile = &player.discard_piles[idx];
+            let top = pile.last().map(|c| format_card(*c)).unwrap_or_else(|| String::from("--"));
             if options.show_discard_sizes {
-                discard_parts.push(format!("{}:{} ({})", idx, top, player.discard_counts[idx]));
+                discard_parts.push(format!("{}:{} ({})", idx, top, pile.len()));
             } else {
                 discard_parts.push(format!("{}:{}", idx, top));
             }
@@ -182,7 +181,11 @@ pub fn describe_action_with_options(
                         .iter()
                         .find(|player| player.id == state.self_player);
                     if let Some(player) = self_player {
-                        let top = player.discard_tops.get(*index).and_then(|card| *card);
+                        let top = player
+                            .discard_piles
+                            .get(*index)
+                            .and_then(|pile| pile.last())
+                            .copied();
                         if options.include_card_details {
                             let text = top.map(format_card).unwrap_or_else(|| String::from("--"));
                             format!("discard[{index}] {text}")

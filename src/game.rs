@@ -124,8 +124,7 @@ impl Game {
                 id: idx,
                 stock_count: player.stock.len(),
                 stock_top: player.stock.last().copied(),
-                discard_tops: player.discard_tops(),
-                discard_counts: player.discard_counts(),
+                discard_piles: from_fn(|i| player.discard_piles[i].clone()),
                 hand_size: player.hand.len(),
                 is_current: idx == self.current_player,
                 has_won: player.has_won,
@@ -184,7 +183,7 @@ impl Game {
         }
 
         for discard_index in 0..DISCARD_PILE_COUNT {
-            if let Some(card) = player_state.discard_top(discard_index) {
+            if let Some(card) = player_state.discard_piles[discard_index].last() {
                 for (build_index, required) in required_values.iter().enumerate() {
                     if card.matches_value(*required) {
                         actions.push(Action::Play {
@@ -511,20 +510,7 @@ impl PlayerState {
         }
     }
 
-    fn discard_top(&self, index: usize) -> Option<Card> {
-        self.discard_piles
-            .get(index)
-            .and_then(|pile| pile.last())
-            .copied()
-    }
-
-    fn discard_tops(&self) -> [Option<Card>; DISCARD_PILE_COUNT] {
-        from_fn(|idx| self.discard_top(idx))
-    }
-
-    fn discard_counts(&self) -> [usize; DISCARD_PILE_COUNT] {
-        from_fn(|idx| self.discard_piles[idx].len())
-    }
+    // Removed obsolete helpers (discard_top/discard_tops/discard_counts) since full discard_piles are public.
 }
 
 #[derive(Clone)]

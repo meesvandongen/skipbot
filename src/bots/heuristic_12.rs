@@ -41,7 +41,7 @@ impl Heuristic12Bot {
                 Some(Card::SkipBo) => pile.next_value,
                 None => return false,
             },
-            CardSource::Discard(d) => match Self::self_player(state).discard_tops[d] {
+            CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied() {
                 Some(Card::Number(v)) => v,
                 Some(Card::SkipBo) => pile.next_value,
                 None => return false,
@@ -70,17 +70,21 @@ impl Heuristic12Bot {
             return i32::MIN / 2;
         };
         let player = Self::self_player(state);
-        let existing_top = player.discard_tops.get(discard_pile).and_then(|v| *v);
+        let existing_top = player
+            .discard_piles
+            .get(discard_pile)
+            .and_then(|pile| pile.last())
+            .copied();
         let duplicate_bonus = if existing_top == Some(card) { 600 } else { 0 };
         let one_below_bonus = match (existing_top, card) {
             (Some(Card::Number(top_v)), Card::Number(v)) if v + 1 == top_v => 80, // tunable
             _ => 0,
         };
-        let pile_depth = player
-            .discard_counts
-            .get(discard_pile)
-            .copied()
-            .unwrap_or_default() as i32;
+            let pile_depth = player
+                .discard_piles
+                .get(discard_pile)
+                .map(|p| p.len() as i32)
+                .unwrap_or(0);
     // Keep spacing penalty modest so that one-below bonus can meaningfully influence choice.
     let spacing_penalty = pile_depth * 20;
         1_000 + duplicate_bonus + one_below_bonus - spacing_penalty
@@ -162,13 +166,8 @@ impl Heuristic12Bot {
                 Card::SkipBo => skipbo_hands.push(idx),
             }
         }
-        for (d_idx, top) in Self::self_player(state)
-            .discard_tops
-            .iter()
-            .copied()
-            .enumerate()
-        {
-            if let Some(card) = top {
+        for (d_idx, pile) in Self::self_player(state).discard_piles.iter().enumerate() {
+            if let Some(card) = pile.last().copied() {
                 match card {
                     Card::Number(v) => by_value[v as usize].push(SourceKind::Discard(d_idx)),
                     Card::SkipBo => skipbo_discards.push(d_idx),
@@ -399,7 +398,7 @@ impl Heuristic12Bot {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,
                 },
-                CardSource::Discard(d) => match Self::self_player(state).discard_tops[d]? {
+                CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied()? {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,
                 },

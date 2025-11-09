@@ -85,7 +85,7 @@ impl StateEncoder {
 
         for discard_index in 0..state.settings.discard_piles {
             let mut bucket = [0.0f32; CARD_BUCKETS];
-            if let Some(card) = self_player.discard_tops[discard_index] {
+            if let Some(card) = self_player.discard_piles[discard_index].last().copied() {
                 bucket[card_bucket(card)] = 1.0;
             }
             for value in bucket {
@@ -93,7 +93,7 @@ impl StateEncoder {
                 offset += 1;
             }
             out[offset] = normalize(
-                self_player.discard_counts[discard_index],
+                self_player.discard_piles[discard_index].len(),
                 state.settings.stock_size,
             );
             offset += 1;

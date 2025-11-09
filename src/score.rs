@@ -5,8 +5,8 @@
 //! Non-winning players receive 0 points.
 //! Drawn / aborted games award no points.
 
-use crate::state::GameStateView;
 use crate::action::PlayerId;
+use crate::state::GameStateView;
 
 /// Compute winner's points for a finished game view.
 ///
@@ -25,11 +25,13 @@ pub fn winner_points(state: &GameStateView, winner: PlayerId) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{GameSettings, GameStatus, PlayerPublicState, TurnPhase, BuildPileView};
+    use crate::state::{BuildPileView, GameSettings, GameStatus, PlayerPublicState, TurnPhase};
 
     fn dummy_state(stock_counts: &[usize], winner: PlayerId) -> GameStateView {
-        let players: Vec<PlayerPublicState> = stock_counts.iter().enumerate().map(|(i, &c)| {
-            PlayerPublicState {
+        let players: Vec<PlayerPublicState> = stock_counts
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| PlayerPublicState {
                 id: i,
                 stock_count: c,
                 stock_top: None,
@@ -38,17 +40,28 @@ mod tests {
                 hand_size: 0,
                 is_current: false,
                 has_won: i == winner,
-            }
-        }).collect();
+            })
+            .collect();
         GameStateView {
-            settings: GameSettings { num_players: stock_counts.len(), stock_size: 30, hand_size: 5, discard_piles: 4, build_piles: 4 },
+            settings: GameSettings {
+                num_players: stock_counts.len(),
+                stock_size: 30,
+                hand_size: 5,
+                discard_piles: 4,
+                build_piles: 4,
+            },
             phase: TurnPhase::GameOver,
             status: GameStatus::Finished { winner },
             self_player: winner,
             current_player: winner,
             draw_pile_count: 0,
             recycle_pile_count: 0,
-            build_piles: [BuildPileView::empty(), BuildPileView::empty(), BuildPileView::empty(), BuildPileView::empty()],
+            build_piles: [
+                BuildPileView::empty(),
+                BuildPileView::empty(),
+                BuildPileView::empty(),
+                BuildPileView::empty(),
+            ],
             players,
             hand: Vec::new(),
         }

@@ -219,8 +219,15 @@ fn refills_hand_after_emptying_during_play() -> Result<(), GameError> {
     // After playing the 5th card from hand, the hand should be immediately refilled to 5 cards.
     let view = game.state_view(current)?;
     assert_eq!(view.build_piles[0].cards.len(), 5);
-    assert_eq!(view.hand.len(), 5, "hand should be refilled to 5 after emptying during play");
-    assert_eq!(view.draw_pile_count, 0, "refill should consume the remaining draw cards");
+    assert_eq!(
+        view.hand.len(),
+        5,
+        "hand should be refilled to 5 after emptying during play"
+    );
+    assert_eq!(
+        view.draw_pile_count, 0,
+        "refill should consume the remaining draw cards"
+    );
     Ok(())
 }
 
@@ -240,7 +247,11 @@ fn detects_stalemate_draw_when_no_draws_and_no_plays() -> Result<(), GameError> 
     for _ in 0..(num_players * 2) {
         let current = game.current_player();
         let actions = game.legal_actions(current)?;
-        assert!(actions.iter().any(|a| matches!(a, skipbot::Action::EndTurn)));
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, skipbot::Action::EndTurn))
+        );
         game.apply_action(current, skipbot::Action::EndTurn)?;
         if matches!(game.status(), GameStatus::Draw) {
             break;

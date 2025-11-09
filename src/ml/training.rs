@@ -257,7 +257,12 @@ impl<B: AutodiffBackend> PolicyTrainer<B> {
         optimizer: OptimizerAdaptor<Adam, PolicyNetwork<B>, B>,
         learning_rate: LearningRate,
     ) -> Self {
-        Self { model, optimizer, learning_rate, step: 0 }
+        Self {
+            model,
+            optimizer,
+            learning_rate,
+            step: 0,
+        }
     }
 
     pub fn with_config(
@@ -375,7 +380,11 @@ impl<B: AutodiffBackend> PolicyTrainer<B> {
 
     /// Same as `fit`, but streams epoch metrics through a user-provided callback.
     /// The callback returns `true` to continue training or `false` to stop early.
-    pub fn fit_streaming<R: Rng, F: FnMut(&TrainingEpochMetrics) -> bool, G: FnMut(&PolicyNetwork<B>, &TrainingEpochMetrics)>(
+    pub fn fit_streaming<
+        R: Rng,
+        F: FnMut(&TrainingEpochMetrics) -> bool,
+        G: FnMut(&PolicyNetwork<B>, &TrainingEpochMetrics),
+    >(
         &mut self,
         train: &mut PolicyDataset,
         validation: Option<&PolicyDataset>,

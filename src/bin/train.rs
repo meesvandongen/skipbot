@@ -157,12 +157,14 @@ fn run() -> Result<(), Box<dyn Error>> {
     // Load checkpoint if resuming.
     let resume_checkpoint: Option<PolicyCheckpoint> = if let Some(ref path) = args.resume {
         Some(load_checkpoint(path)?)
-    } else { None };
+    } else {
+        None
+    };
     // Resolve output directory: explicit flag > parent of resume file > default.
     let output_dir = if let Some(dir) = args.output.clone() {
         dir
     } else if let Some(ref ckpt_path) = args.resume {
-        ckpt_path.parent().unwrap_or(Path::new(".")) .to_path_buf()
+        ckpt_path.parent().unwrap_or(Path::new(".")).to_path_buf()
     } else {
         PathBuf::from("checkpoints")
     };
@@ -170,21 +172,61 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let mut master_rng = StdRng::seed_from_u64(args.seed);
     // If resuming, we always train a single bot (the checkpointed one).
-    let total_bots = if resume_checkpoint.is_some() { 1 } else { args.bots };
+    let total_bots = if resume_checkpoint.is_some() {
+        1
+    } else {
+        args.bots
+    };
     for bot_index in 0..total_bots {
         // Determine dataset seed and hyperparameters when resuming.
-        let dataset_seed = resume_checkpoint.as_ref().map(|c| c.metadata.dataset_seed).unwrap_or_else(|| master_rng.next_u64());
-        let hidden = resume_checkpoint.as_ref().map(|c| c.metadata.hidden).unwrap_or(args.hidden);
-        let depth = resume_checkpoint.as_ref().map(|c| c.metadata.depth).unwrap_or(args.depth);
-        let players = resume_checkpoint.as_ref().map(|c| c.metadata.players).unwrap_or(args.players);
-        let games_per_bot = resume_checkpoint.as_ref().map(|c| c.metadata.games).unwrap_or(args.games_per_bot);
-        let teacher = resume_checkpoint.as_ref().map(|c| c.metadata.teacher).unwrap_or(args.teacher);
-        let exploration = resume_checkpoint.as_ref().map(|c| c.metadata.exploration).unwrap_or(args.exploration);
-        let winner_weight = resume_checkpoint.as_ref().map(|c| c.metadata.winner_weight).unwrap_or(args.winner_weight);
-        let runner_weight = resume_checkpoint.as_ref().map(|c| c.metadata.runner_weight).unwrap_or(args.runner_weight);
-        let draw_weight = resume_checkpoint.as_ref().map(|c| c.metadata.draw_weight).unwrap_or(args.draw_weight);
-        let max_turns = resume_checkpoint.as_ref().and_then(|c| c.metadata.max_turns).or(args.max_turns);
-        let stock_size = resume_checkpoint.as_ref().and_then(|c| c.metadata.stock_size).or(args.stock_size);
+        let dataset_seed = resume_checkpoint
+            .as_ref()
+            .map(|c| c.metadata.dataset_seed)
+            .unwrap_or_else(|| master_rng.next_u64());
+        let hidden = resume_checkpoint
+            .as_ref()
+            .map(|c| c.metadata.hidden)
+            .unwrap_or(args.hidden);
+        let depth = resume_checkpoint
+            .as_ref()
+            .map(|c| c.metadata.depth)
+            .unwrap_or(args.depth);
+        let players = resume_checkpoint
+            .as_ref()
+            .map(|c| c.metadata.players)
+            .unwrap_or(args.players);
+        let games_per_bot = resume_checkpoint
+            .as_ref()
+            .map(|c| c.metadata.games)
+            .unwrap_or(args.games_per_bot);
+        let teacher = resume_checkpoint
+            .as_ref()
+            .map(|c| c.metadata.teacher)
+            .unwrap_or(args.teacher);
+        let exploration = resume_checkpoint
+            .as_ref()
+            .map(|c| c.metadata.exploration)
+            .unwrap_or(args.exploration);
+        let winner_weight = resume_checkpoint
+            .as_ref()
+            .map(|c| c.metadata.winner_weight)
+            .unwrap_or(args.winner_weight);
+        let runner_weight = resume_checkpoint
+            .as_ref()
+            .map(|c| c.metadata.runner_weight)
+            .unwrap_or(args.runner_weight);
+        let draw_weight = resume_checkpoint
+            .as_ref()
+            .map(|c| c.metadata.draw_weight)
+            .unwrap_or(args.draw_weight);
+        let max_turns = resume_checkpoint
+            .as_ref()
+            .and_then(|c| c.metadata.max_turns)
+            .or(args.max_turns);
+        let stock_size = resume_checkpoint
+            .as_ref()
+            .and_then(|c| c.metadata.stock_size)
+            .or(args.stock_size);
         println!(
             "\n=== Training bot {}/{} (dataset seed {:#x}) ===",
             bot_index + 1,
@@ -256,13 +298,17 @@ fn run() -> Result<(), Box<dyn Error>> {
         // If resuming, load weights from checkpoint bytes.
         if let Some(ref ckpt) = resume_checkpoint {
             let device = <TrainBackend as burn::tensor::backend::Backend>::Device::default();
-            let record = BinBytesRecorder::<FullPrecisionSettings>::new()
-                .load::<<PolicyNetwork<TrainBackend> as Module<TrainBackend>>::Record>(
-                    ckpt.weights.clone(),
-                    &device,
-                )?;
+            let record = BinBytesRecorder::<FullPrecisionSettings>::new().load::<<PolicyNetwork<
+                TrainBackend,
+            > as Module<TrainBackend>>::Record>(
+                ckpt.weights.clone(),
+                &device,
+            )?;
             model = model.load_record(record);
-            println!("  resumed from checkpoint (hidden={}, depth={}, best_val={:?})", ckpt.metadata.hidden, ckpt.metadata.depth, ckpt.metadata.best_validation_loss);
+            println!(
+                "  resumed from checkpoint (hidden={}, depth={}, best_val={:?})",
+                ckpt.metadata.hidden, ckpt.metadata.depth, ckpt.metadata.best_validation_loss
+            );
         }
         let mut trainer = PolicyTrainer::with_config(model, optim_config, learning_rate);
         let loop_config = TrainingLoopConfig {
@@ -271,49 +317,63 @@ fn run() -> Result<(), Box<dyn Error>> {
         };
         let mut training_rng = StdRng::seed_from_u64(dataset_seed ^ 0x9E37_79B9);
         // Streaming training with optional early stopping and best checkpointing
-    let mut best_val: Option<f32> = resume_checkpoint.as_ref().and_then(|c| c.metadata.best_validation_loss);
+        let mut best_val: Option<f32> = resume_checkpoint
+            .as_ref()
+            .and_then(|c| c.metadata.best_validation_loss);
         let mut epochs_no_improve: usize = 0;
         let mut final_metrics: Option<TrainingEpochMetrics> = None;
         let train_len = train_dataset.len();
         // Closure invoked when a new best validation loss is found (passed the model reference).
-        let mut on_best_checkpoint = |model: &PolicyNetwork<TrainBackend>, metrics: &TrainingEpochMetrics| {
-            if let Some(val_loss) = metrics.validation_loss {
-                let record: PolicyRecord = model.clone().valid().into_record();
-                if let Ok(best_weights) = BinBytesRecorder::<FullPrecisionSettings>::new().record(record, ()) {
-                    let best_meta = PolicyMetadata {
-                        hidden,
-                        depth,
-                        learning_rate: args.learning_rate,
-                        epochs: metrics.epoch,
-                        batch_size: args.batch_size,
-                        players,
-                        games: games_per_bot,
-                        seed: args.seed,
-                        dataset_seed,
-                        train_samples: train_len,
-                        validation_samples: validation_dataset.as_ref().map(|ds| ds.len()).unwrap_or(0),
-                        final_train_loss: metrics.train_loss,
-                        final_validation_loss: Some(val_loss),
-                        exploration,
-                        teacher,
-                        winner_weight,
-                        runner_weight,
-                        draw_weight,
-                        max_turns,
-                        stock_size,
-                        patience: args.patience,
-                        best_validation_loss: Some(val_loss),
-                    };
-                    let best_checkpoint = PolicyCheckpoint { metadata: best_meta, weights: best_weights };
-                    if let Ok(bytes) = bincode::serde::encode_to_vec(&best_checkpoint, bincode::config::standard()) {
-                        let filename = format!("policy-bot-{:02}-best.bin", bot_index + 1);
-                        let path = output_dir.join(filename);
-                        let _ = fs::write(&path, bytes);
-                        println!("  best checkpoint updated -> {}", display_path(&path));
+        let mut on_best_checkpoint =
+            |model: &PolicyNetwork<TrainBackend>, metrics: &TrainingEpochMetrics| {
+                if let Some(val_loss) = metrics.validation_loss {
+                    let record: PolicyRecord = model.clone().valid().into_record();
+                    if let Ok(best_weights) =
+                        BinBytesRecorder::<FullPrecisionSettings>::new().record(record, ())
+                    {
+                        let best_meta = PolicyMetadata {
+                            hidden,
+                            depth,
+                            learning_rate: args.learning_rate,
+                            epochs: metrics.epoch,
+                            batch_size: args.batch_size,
+                            players,
+                            games: games_per_bot,
+                            seed: args.seed,
+                            dataset_seed,
+                            train_samples: train_len,
+                            validation_samples: validation_dataset
+                                .as_ref()
+                                .map(|ds| ds.len())
+                                .unwrap_or(0),
+                            final_train_loss: metrics.train_loss,
+                            final_validation_loss: Some(val_loss),
+                            exploration,
+                            teacher,
+                            winner_weight,
+                            runner_weight,
+                            draw_weight,
+                            max_turns,
+                            stock_size,
+                            patience: args.patience,
+                            best_validation_loss: Some(val_loss),
+                        };
+                        let best_checkpoint = PolicyCheckpoint {
+                            metadata: best_meta,
+                            weights: best_weights,
+                        };
+                        if let Ok(bytes) = bincode::serde::encode_to_vec(
+                            &best_checkpoint,
+                            bincode::config::standard(),
+                        ) {
+                            let filename = format!("policy-bot-{:02}-best.bin", bot_index + 1);
+                            let path = output_dir.join(filename);
+                            let _ = fs::write(&path, bytes);
+                            println!("  best checkpoint updated -> {}", display_path(&path));
+                        }
                     }
                 }
-            }
-        };
+            };
 
         let history = trainer.fit_streaming(
             &mut train_dataset,
@@ -470,7 +530,8 @@ fn display_path(path: &Path) -> String {
 
 fn load_checkpoint(path: &Path) -> Result<PolicyCheckpoint, Box<dyn Error>> {
     let bytes = fs::read(path)?;
-    let (ckpt, _): (PolicyCheckpoint, usize) = bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?;
+    let (ckpt, _): (PolicyCheckpoint, usize) =
+        bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?;
     Ok(ckpt)
 }
 

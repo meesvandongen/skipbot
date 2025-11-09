@@ -21,8 +21,8 @@ pub use crate::game::{Game, GameBuilder, GameConfig};
 pub use crate::ml::{
     ActionSpace, DEFAULT_HIDDEN, DEFAULT_OUTPUT, DEFAULT_STACK, PolicyNetwork, StateEncoder,
 };
+pub use crate::score::winner_points;
 pub use crate::state::{
     BuildPileView, GameSettings, GameStateView, GameStatus, PlayerPublicState, TurnPhase,
 };
-pub use crate::score::winner_points;
 pub use crate::visualize::{DescribeOptions, VisualOptions, describe_action, render_state};

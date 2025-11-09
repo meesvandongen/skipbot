@@ -11,8 +11,8 @@ use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 // no need to import Shift when drawing inline
 
-use skipbot::{Bot, Game, GameError};
 use skipbot::winner_points;
+use skipbot::{Bot, Game, GameError};
 use skipbot::{create_bot_from_spec, label_for_spec};
 
 /// Default base seed for deterministic runs.
@@ -246,9 +246,7 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
         );
     }
     if aborted_games > 0 {
-        println!(
-            "\nNote: {aborted_games} game(s) ended without a winner (draws or timeouts)."
-        );
+        println!("\nNote: {aborted_games} game(s) ended without a winner (draws or timeouts).");
     }
 
     if !args.no_chart {

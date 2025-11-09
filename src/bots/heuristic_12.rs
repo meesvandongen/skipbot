@@ -3,15 +3,17 @@ use crate::bot::Bot;
 use crate::card::{Card, MAX_CARD_VALUE, MIN_CARD_VALUE};
 use crate::state::{GameStateView, PlayerPublicState};
 
-/// Heuristic 11 bot (based on Heuristic 10)
+/// Heuristic 12 bot (based on Heuristic 11)
 /// Add-on behavior:
-/// - After stock-first planning, attempt to determine if ALL cards in hand can be
-///   played in sequence without using stock/discards (using Skip-Bo as wilds).
-///   If such a sequence exists, play the first action of that sequence to trigger
-///   an immediate hand refill when the hand empties.
-pub struct Heuristic11Bot;
+/// - Same stock-first planning as Heuristic 11.
+/// - Same hand-empty sequence detection as Heuristic 11.
+/// - Discard scoring now adds a small bonus when discarding a numeric card
+///   that is exactly one below the existing top numeric card on the chosen
+///   discard pile. Rationale: placing n below (n+1) allows playing n then n+1
+///   consecutively later since discards reveal the previous card after play.
+pub struct Heuristic12Bot;
 
-impl Heuristic11Bot {
+impl Heuristic12Bot {
     pub fn new() -> Self {
         Self
     }
@@ -23,22 +25,16 @@ impl Heuristic11Bot {
             .find(|p| p.id == state.self_player)
             .expect("self player state must be present")
     }
-
     fn next_player<'a>(state: &'a GameStateView) -> Option<&'a PlayerPublicState> {
         let next_id = (state.current_player + 1) % state.settings.num_players;
         state.players.iter().find(|p| p.id == next_id)
     }
 
-    /// Returns true if the given play action would set the pile to a next_value
-    /// that matches the next player's numeric stock-top card.
-    /// (Same as Heuristic 9/10; only used in fallback stage.)
     fn should_block_play(state: &GameStateView, action: &Action) -> bool {
         let Action::Play { source, build_pile } = action else {
             return false;
         };
         let pile = &state.build_piles[*build_pile];
-
-        // Determine the numeric value we are effectively playing.
         let played_value = match *source {
             CardSource::Hand(i) => match state.hand.get(i).copied() {
                 Some(Card::Number(v)) => v,
@@ -56,7 +52,6 @@ impl Heuristic11Bot {
                 None => return false,
             },
         };
-
         let above = if played_value == MAX_CARD_VALUE {
             1
         } else {
@@ -69,7 +64,7 @@ impl Heuristic11Bot {
         }
     }
 
-    /// Discard scoring: identical to heuristic_3 except we IGNORE card priority.
+    /// Discard scoring with one-below bonus.
     fn score_discard(state: &GameStateView, hand_index: usize, discard_pile: usize) -> i32 {
         let Some(card) = state.hand.get(hand_index).copied() else {
             return i32::MIN / 2;
@@ -77,16 +72,19 @@ impl Heuristic11Bot {
         let player = Self::self_player(state);
         let existing_top = player.discard_tops.get(discard_pile).and_then(|v| *v);
         let duplicate_bonus = if existing_top == Some(card) { 600 } else { 0 };
+        let one_below_bonus = match (existing_top, card) {
+            (Some(Card::Number(top_v)), Card::Number(v)) if v + 1 == top_v => 80, // tunable
+            _ => 0,
+        };
         let pile_depth = player
             .discard_counts
             .get(discard_pile)
             .copied()
             .unwrap_or_default() as i32;
-        let spacing_penalty = pile_depth * 20;
-        1_000 + duplicate_bonus - spacing_penalty - (hand_index as i32 * 10)
+        let spacing_penalty = if pile_depth > 0 { 100 + (pile_depth - 1) * 20 } else { 0 };
+        1_000 + duplicate_bonus + one_below_bonus - spacing_penalty
     }
 
-    /// Compute required sequential values for a pile until the stock becomes playable.
     fn required_values_for_pile(next_value: u8, stock: Card) -> Vec<u8> {
         match stock {
             Card::SkipBo => Vec::new(),
@@ -112,13 +110,9 @@ impl Heuristic11Bot {
         }
     }
 
-    /// Plan minimal prerequisite plays to make stock playable; return first action if feasible.
-    /// (Identical logic to Heuristic 9/10; no blocking in this phase.)
     fn can_play_stock(state: &GameStateView, legal_actions: &[Action]) -> Option<Action> {
         let player = Self::self_player(state);
         let stock = player.stock_top?;
-
-        // Fast path: immediate stock play.
         if let Card::SkipBo = stock {
             if let Some((best_idx, _)) = state
                 .build_piles
@@ -153,17 +147,14 @@ impl Heuristic11Bot {
                 }
             }
         }
-
         #[derive(Clone, Copy)]
         enum SourceKind {
             Hand(usize),
             Discard(usize),
         }
-
         let mut by_value: [Vec<SourceKind>; (MAX_CARD_VALUE as usize) + 1] = Default::default();
         let mut skipbo_discards: Vec<usize> = Vec::new();
         let mut skipbo_hands: Vec<usize> = Vec::new();
-
         for (idx, card) in state.hand.iter().copied().enumerate() {
             match card {
                 Card::Number(v) => by_value[v as usize].push(SourceKind::Hand(idx)),
@@ -183,7 +174,6 @@ impl Heuristic11Bot {
                 }
             }
         }
-
         let mut best_plan: Option<(usize, Vec<Action>)> = None;
         for (pile_idx, pile) in state.build_piles.iter().enumerate() {
             let required = Self::required_values_for_pile(pile.next_value, stock);
@@ -285,15 +275,11 @@ impl Heuristic11Bot {
         None
     }
 
-    /// Attempt to find a sequence that plays ALL current hand cards (ignoring stock/discards).
-    /// If such a sequence exists, return the first play action in that sequence.
     fn can_play_all_hand(state: &GameStateView, legal_actions: &[Action]) -> Option<Action> {
         let hand_len = state.hand.len();
         if hand_len == 0 {
             return None;
         }
-
-        // Quick feasibility: if there are no playable piles for any card, skip.
         let mut any_playable = false;
         for (_i, card) in state.hand.iter().enumerate() {
             match card {
@@ -312,27 +298,21 @@ impl Heuristic11Bot {
         if !any_playable {
             return None;
         }
-
         let mut piles_next: [u8; 4] = [0; 4];
         for (i, pile) in state.build_piles.iter().enumerate() {
             piles_next[i] = pile.next_value;
         }
         let mut used: Vec<bool> = vec![false; hand_len];
-        let mut path: Vec<(usize, usize)> = Vec::with_capacity(hand_len); // (hand_idx, pile_idx)
-
-        // Precompute which initial actions are legal to respect engine constraints for the first move.
+        let mut path: Vec<(usize, usize)> = Vec::with_capacity(hand_len);
         let is_first_action_legal = |hand_idx: usize, pile_idx: usize| -> bool {
             legal_actions.contains(&Action::Play {
                 source: CardSource::Hand(hand_idx),
                 build_pile: pile_idx,
             })
         };
-
         fn inc(v: u8) -> u8 {
             if v == MAX_CARD_VALUE { 1 } else { v + 1 }
         }
-
-        // Depth-first search for a full-hand plan.
         fn dfs(
             depth: usize,
             piles: &mut [u8; 4],
@@ -351,7 +331,6 @@ impl Heuristic11Bot {
                 match card {
                     Card::SkipBo => {
                         for pi in 0..piles.len() {
-                            // First step must be legal in current state.
                             if path.is_empty() && !first_legal(hi, pi) {
                                 continue;
                             }
@@ -391,7 +370,6 @@ impl Heuristic11Bot {
             }
             false
         }
-
         if dfs(
             0,
             &mut piles_next,
@@ -413,7 +391,6 @@ impl Heuristic11Bot {
         None
     }
 
-    /// Extract numeric value played by a play action. Skip-Bo yields None.
     fn played_card_value(state: &GameStateView, action: &Action) -> Option<u8> {
         if let Action::Play { source, .. } = action {
             match *source {
@@ -434,14 +411,10 @@ impl Heuristic11Bot {
             None
         }
     }
-
-    /// Returns true if a play action would break a duplicated next_value pair.
-    /// Specifically: if the target pile's current next_value appears on exactly two
-    /// piles (including this one), we consider advancing it as "breaking" duplication.
     fn breaks_pair_duplication(state: &GameStateView, action: &Action) -> bool {
         let Action::Play { build_pile, .. } = action else {
             return false;
-        }; // non-play actions irrelevant
+        };
         let old_next = state.build_piles[*build_pile].next_value;
         let mut count = 0usize;
         for pile in state.build_piles.iter() {
@@ -453,35 +426,29 @@ impl Heuristic11Bot {
     }
 }
 
-impl Default for Heuristic11Bot {
+impl Default for Heuristic12Bot {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Bot for Heuristic11Bot {
+impl Bot for Heuristic12Bot {
     fn select_action(&mut self, state: &GameStateView, legal_actions: &[Action]) -> Action {
         assert!(
             !legal_actions.is_empty(),
-            "heuristic 11 bot requires at least one legal action"
+            "heuristic 12 bot requires at least one legal action"
         );
-
-        // 1) Stock-first plan (same as heuristic 10).
         if let Some(action) = Self::can_play_stock(state, legal_actions) {
             return action;
         }
-
-        // 2) Hand-empty plan: if we can play ALL current hand cards in sequence, do it.
         if let Some(action) = Self::can_play_all_hand(state, legal_actions) {
             return action;
         }
-
-        // 3) Number play selection with duplication preservation (same as heuristic 10).
         let stock_value = match Self::self_player(state).stock_top {
             Some(Card::Number(v)) => v,
             Some(Card::SkipBo) | None => 1,
         };
-        let mut best_play: Option<(u8, usize, Action)> = None; // (card_value, pile_len, action)
+        let mut best_play: Option<(u8, usize, Action)> = None;
         for action in legal_actions.iter() {
             if !matches!(action, Action::Play { .. }) {
                 continue;
@@ -512,8 +479,6 @@ impl Bot for Heuristic11Bot {
         if let Some((_, _, action)) = best_play {
             return action;
         }
-
-        // 4) Discard scoring.
         let mut best: Option<(i32, Action)> = None;
         for action in legal_actions.iter() {
             if let Action::Discard {
@@ -530,8 +495,6 @@ impl Bot for Heuristic11Bot {
         if let Some((_, action)) = best {
             return action;
         }
-
-        // 5) Fallback: prefer a non-blocked play or any non-play; also avoid blocked plays.
         if let Some(action) = legal_actions
             .iter()
             .find(|a| !matches!(a, Action::Play { .. }) || !Self::should_block_play(state, a))

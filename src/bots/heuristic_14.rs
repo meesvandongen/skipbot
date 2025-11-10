@@ -31,13 +31,37 @@ impl Bot for Heuristic14Bot {
         );
 
         // 1) Prefer any Play action to keep the turn going; choose naive priority.
-        if let Some(action) = legal_actions.iter().find(|a| matches!(a, Action::Play { source: CardSource::Stock, .. })) {
+        if let Some(action) = legal_actions.iter().find(|a| {
+            matches!(
+                a,
+                Action::Play {
+                    source: CardSource::Stock,
+                    ..
+                }
+            )
+        }) {
             return action.clone();
         }
-        if let Some(action) = legal_actions.iter().find(|a| matches!(a, Action::Play { source: CardSource::Discard(_), .. })) {
+        if let Some(action) = legal_actions.iter().find(|a| {
+            matches!(
+                a,
+                Action::Play {
+                    source: CardSource::Discard(_),
+                    ..
+                }
+            )
+        }) {
             return action.clone();
         }
-        if let Some(action) = legal_actions.iter().find(|a| matches!(a, Action::Play { source: CardSource::Hand(_), .. })) {
+        if let Some(action) = legal_actions.iter().find(|a| {
+            matches!(
+                a,
+                Action::Play {
+                    source: CardSource::Hand(_),
+                    ..
+                }
+            )
+        }) {
             return action.clone();
         }
 
@@ -47,7 +71,10 @@ impl Bot for Heuristic14Bot {
         }
 
         // 3) Otherwise discard (naively pick the first discard available) or fallback.
-        if let Some(action) = legal_actions.iter().find(|a| matches!(a, Action::Discard { .. })) {
+        if let Some(action) = legal_actions
+            .iter()
+            .find(|a| matches!(a, Action::Discard { .. }))
+        {
             return action.clone();
         }
 

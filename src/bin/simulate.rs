@@ -2,10 +2,7 @@ use std::env;
 use std::error::Error;
 use std::process;
 
-use skipbot::{
-    Bot, DEFAULT_HIDDEN, DEFAULT_STACK, Game, GameError, create_bot_from_spec, describe_action,
-    render_state,
-};
+use skipbot::{Bot, Game, GameError, create_bot_from_spec, describe_action, render_state};
 
 const DEFAULT_SEED: u64 = 0xDEC0_1DED_5EED_F00D;
 
@@ -128,8 +125,5 @@ fn print_usage() {
     println!("  random[:seed]         Random bot with optional per-bot seed");
     println!("  heuristic             Deterministic rule-based baseline bot");
     println!("  heuristic2            Improved heuristic with stock-first planning");
-    println!(
-        "  policy[:hidden[xdepth]]  Burn policy network bot (default hidden {DEFAULT_HIDDEN}, depth {DEFAULT_STACK})"
-    );
     println!("If no bots are provided, defaults to one human and one random bot.");
 }

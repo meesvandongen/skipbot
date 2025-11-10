@@ -6,11 +6,18 @@ use skipbot::state::{
     BuildPileView, GameSettings, GameStateView, GameStatus, PlayerPublicState, TurnPhase,
 };
 
-fn base_state(hand: Vec<Card>, discard_tops: [Vec<Card>; 4], stock_top: Option<Card>) -> GameStateView {
+fn base_state(
+    hand: Vec<Card>,
+    discard_tops: [Vec<Card>; 4],
+    stock_top: Option<Card>,
+) -> GameStateView {
     let settings = GameSettings::new(2).unwrap();
     let build_piles = [
         BuildPileView::empty(),
-        BuildPileView { cards: vec![Card::Number(1)], next_value: 2 },
+        BuildPileView {
+            cards: vec![Card::Number(1)],
+            next_value: 2,
+        },
         BuildPileView::empty(),
         BuildPileView::empty(),
     ];
@@ -48,15 +55,34 @@ fn base_state(hand: Vec<Card>, discard_tops: [Vec<Card>; 4], stock_top: Option<C
 
 #[test]
 fn heuristic15_prefers_stock_play() {
-    let state = base_state(vec![Card::Number(2)], [vec![], vec![], vec![], vec![]], Some(Card::Number(2)));
+    let state = base_state(
+        vec![Card::Number(2)],
+        [vec![], vec![], vec![], vec![]],
+        Some(Card::Number(2)),
+    );
     let legal_actions = vec![
-        Action::Play { source: CardSource::Stock, build_pile: 1 },
-        Action::Play { source: CardSource::Hand(0), build_pile: 1 },
-        Action::Play { source: CardSource::Discard(0), build_pile: 1 },
+        Action::Play {
+            source: CardSource::Stock,
+            build_pile: 1,
+        },
+        Action::Play {
+            source: CardSource::Hand(0),
+            build_pile: 1,
+        },
+        Action::Play {
+            source: CardSource::Discard(0),
+            build_pile: 1,
+        },
     ];
     let mut bot = Heuristic15Bot::new();
     let chosen = bot.select_action(&state, &legal_actions);
-    assert_eq!(chosen, Action::Play { source: CardSource::Stock, build_pile: 1 });
+    assert_eq!(
+        chosen,
+        Action::Play {
+            source: CardSource::Stock,
+            build_pile: 1
+        }
+    );
 }
 
 #[test]
@@ -67,12 +93,24 @@ fn heuristic15_prefers_hand_over_discard() {
         None,
     );
     let legal_actions = vec![
-        Action::Play { source: CardSource::Discard(0), build_pile: 1 },
-        Action::Play { source: CardSource::Hand(0), build_pile: 1 },
+        Action::Play {
+            source: CardSource::Discard(0),
+            build_pile: 1,
+        },
+        Action::Play {
+            source: CardSource::Hand(0),
+            build_pile: 1,
+        },
     ];
     let mut bot = Heuristic15Bot::new();
     let chosen = bot.select_action(&state, &legal_actions);
-    assert_eq!(chosen, Action::Play { source: CardSource::Hand(0), build_pile: 1 });
+    assert_eq!(
+        chosen,
+        Action::Play {
+            source: CardSource::Hand(0),
+            build_pile: 1
+        }
+    );
 }
 
 #[test]

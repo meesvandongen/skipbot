@@ -265,10 +265,12 @@ impl Heuristic6Bot {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,
                 },
-                CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied()? {
-                    Card::Number(v) => Some(v),
-                    Card::SkipBo => None,
-                },
+                CardSource::Discard(d) => {
+                    match Self::self_player(state).discard_piles[d].last().copied()? {
+                        Card::Number(v) => Some(v),
+                        Card::SkipBo => None,
+                    }
+                }
                 CardSource::Stock => None,
             }
         } else {

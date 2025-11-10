@@ -41,11 +41,13 @@ impl Heuristic12Bot {
                 Some(Card::SkipBo) => pile.next_value,
                 None => return false,
             },
-            CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied() {
-                Some(Card::Number(v)) => v,
-                Some(Card::SkipBo) => pile.next_value,
-                None => return false,
-            },
+            CardSource::Discard(d) => {
+                match Self::self_player(state).discard_piles[d].last().copied() {
+                    Some(Card::Number(v)) => v,
+                    Some(Card::SkipBo) => pile.next_value,
+                    None => return false,
+                }
+            }
             CardSource::Stock => match Self::self_player(state).stock_top {
                 Some(Card::Number(v)) => v,
                 Some(Card::SkipBo) => pile.next_value,
@@ -80,13 +82,13 @@ impl Heuristic12Bot {
             (Some(Card::Number(top_v)), Card::Number(v)) if v + 1 == top_v => 80, // tunable
             _ => 0,
         };
-            let pile_depth = player
-                .discard_piles
-                .get(discard_pile)
-                .map(|p| p.len() as i32)
-                .unwrap_or(0);
-    // Keep spacing penalty modest so that one-below bonus can meaningfully influence choice.
-    let spacing_penalty = pile_depth * 20;
+        let pile_depth = player
+            .discard_piles
+            .get(discard_pile)
+            .map(|p| p.len() as i32)
+            .unwrap_or(0);
+        // Keep spacing penalty modest so that one-below bonus can meaningfully influence choice.
+        let spacing_penalty = pile_depth * 20;
         1_000 + duplicate_bonus + one_below_bonus - spacing_penalty
     }
 
@@ -398,10 +400,12 @@ impl Heuristic12Bot {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,
                 },
-                CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied()? {
-                    Card::Number(v) => Some(v),
-                    Card::SkipBo => None,
-                },
+                CardSource::Discard(d) => {
+                    match Self::self_player(state).discard_piles[d].last().copied()? {
+                        Card::Number(v) => Some(v),
+                        Card::SkipBo => None,
+                    }
+                }
                 CardSource::Stock => match Self::self_player(state).stock_top? {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,

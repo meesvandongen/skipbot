@@ -72,7 +72,7 @@ struct Args {
     #[arg(long = "stock-size")]
     stock_size: Option<usize>,
 
-    /// Player bot specs: e.g., heuristic random policy:128x3 (2-6 total)
+    /// Player bot specs: e.g., heuristic random (2-6 total)
     bots: Vec<String>,
 }
 
@@ -86,9 +86,7 @@ fn main() {
 
 fn run(args: Args) -> Result<(), Box<dyn Error>> {
     if args.bots.is_empty() {
-        return Err(
-            "please provide between 2 and 6 bot specs (e.g., heuristic random policy)".into(),
-        );
+        return Err("please provide between 2 and 6 bot specs (e.g., heuristic random)".into());
     }
     if args.bots.len() < 2 || args.bots.len() > 6 {
         return Err(format!(

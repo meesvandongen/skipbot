@@ -43,11 +43,13 @@ impl Heuristic9Bot {
                 Some(Card::SkipBo) => pile.next_value,
                 None => return false,
             },
-            CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied() {
-                Some(Card::Number(v)) => v,
-                Some(Card::SkipBo) => pile.next_value,
-                None => return false,
-            },
+            CardSource::Discard(d) => {
+                match Self::self_player(state).discard_piles[d].last().copied() {
+                    Some(Card::Number(v)) => v,
+                    Some(Card::SkipBo) => pile.next_value,
+                    None => return false,
+                }
+            }
             CardSource::Stock => match Self::self_player(state).stock_top {
                 Some(Card::Number(v)) => v,
                 Some(Card::SkipBo) => pile.next_value,
@@ -308,10 +310,12 @@ impl Heuristic9Bot {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,
                 },
-                CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied()? {
-                    Card::Number(v) => Some(v),
-                    Card::SkipBo => None,
-                },
+                CardSource::Discard(d) => {
+                    match Self::self_player(state).discard_piles[d].last().copied()? {
+                        Card::Number(v) => Some(v),
+                        Card::SkipBo => None,
+                    }
+                }
                 CardSource::Stock => match Self::self_player(state).stock_top? {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,

@@ -47,11 +47,13 @@ impl Heuristic13Bot {
                 Some(Card::SkipBo) => pile.next_value,
                 None => return false,
             },
-            CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied() {
-                Some(Card::Number(v)) => v,
-                Some(Card::SkipBo) => pile.next_value,
-                None => return false,
-            },
+            CardSource::Discard(d) => {
+                match Self::self_player(state).discard_piles[d].last().copied() {
+                    Some(Card::Number(v)) => v,
+                    Some(Card::SkipBo) => pile.next_value,
+                    None => return false,
+                }
+            }
             CardSource::Stock => match Self::self_player(state).stock_top {
                 Some(Card::Number(v)) => v,
                 Some(Card::SkipBo) => pile.next_value,
@@ -59,7 +61,11 @@ impl Heuristic13Bot {
             },
         };
 
-        let above = if played_value == MAX_CARD_VALUE { 1 } else { played_value + 1 };
+        let above = if played_value == MAX_CARD_VALUE {
+            1
+        } else {
+            played_value + 1
+        };
         if let Some(next_player) = Self::next_player(state) {
             matches!(next_player.stock_top, Some(Card::Number(v)) if v == above)
         } else {
@@ -244,7 +250,11 @@ impl Heuristic13Bot {
                         });
                     }
                 }
-                _sim_next = if _sim_next == MAX_CARD_VALUE { 1 } else { _sim_next + 1 };
+                _sim_next = if _sim_next == MAX_CARD_VALUE {
+                    1
+                } else {
+                    _sim_next + 1
+                };
             }
             if !possible {
                 continue;
@@ -292,24 +302,35 @@ impl Heuristic13Bot {
         let mut any_playable = false;
         for card in state.hand.iter() {
             match card {
-                Card::SkipBo => { any_playable = true; break; }
+                Card::SkipBo => {
+                    any_playable = true;
+                    break;
+                }
                 Card::Number(v) => {
                     if state.build_piles.iter().any(|p| p.next_value == *v) {
-                        any_playable = true; break;
+                        any_playable = true;
+                        break;
                     }
                 }
             }
         }
         if !any_playable {
             // Check discard tops too
-            if let Some(_) = Self::self_player(state).discard_piles.iter().filter_map(|p| p.last().copied()).find(|card| match card {
-                Card::SkipBo => true,
-                Card::Number(v) => state.build_piles.iter().any(|p| p.next_value == *v),
-            }) {
+            if let Some(_) = Self::self_player(state)
+                .discard_piles
+                .iter()
+                .filter_map(|p| p.last().copied())
+                .find(|card| match card {
+                    Card::SkipBo => true,
+                    Card::Number(v) => state.build_piles.iter().any(|p| p.next_value == *v),
+                })
+            {
                 any_playable = true;
             }
         }
-        if !any_playable { return None; }
+        if !any_playable {
+            return None;
+        }
 
         let mut piles_next: [u8; 4] = [0; 4];
         for (i, pile) in state.build_piles.iter().enumerate() {
@@ -324,29 +345,52 @@ impl Heuristic13Bot {
         };
 
         #[derive(Clone, Copy)]
-        enum Src { Hand(usize), Discard(usize) }
+        enum Src {
+            Hand(usize),
+            Discard(usize),
+        }
 
         // Precompute which initial actions are legal to respect engine constraints for the first move.
         let is_first_action_legal = |src: Src, pile_idx: usize| -> bool {
             match src {
-                Src::Hand(hi) => legal_actions.contains(&Action::Play { source: CardSource::Hand(hi), build_pile: pile_idx }),
-                Src::Discard(di) => legal_actions.contains(&Action::Play { source: CardSource::Discard(di), build_pile: pile_idx }),
+                Src::Hand(hi) => legal_actions.contains(&Action::Play {
+                    source: CardSource::Hand(hi),
+                    build_pile: pile_idx,
+                }),
+                Src::Discard(di) => legal_actions.contains(&Action::Play {
+                    source: CardSource::Discard(di),
+                    build_pile: pile_idx,
+                }),
             }
         };
 
-        fn inc(v: u8) -> u8 { if v == MAX_CARD_VALUE { 1 } else { v + 1 } }
+        fn inc(v: u8) -> u8 {
+            if v == MAX_CARD_VALUE { 1 } else { v + 1 }
+        }
 
         // DFS with deep discard usage + memoization + node budget.
         const NODE_LIMIT: usize = 50_000;
-        fn build_key(piles: &[u8; 4], used_hand: &[bool], used_pop: &[usize; 4]) -> (u8, u8, u8, u8, u64, u8, u8, u8, u8) {
+        fn build_key(
+            piles: &[u8; 4],
+            used_hand: &[bool],
+            used_pop: &[usize; 4],
+        ) -> (u8, u8, u8, u8, u64, u8, u8, u8, u8) {
             let mut bitmask: u64 = 0;
             for (i, used) in used_hand.iter().enumerate() {
-                if *used { bitmask |= 1u64 << i; }
+                if *used {
+                    bitmask |= 1u64 << i;
+                }
             }
             (
-                piles[0], piles[1], piles[2], piles[3],
+                piles[0],
+                piles[1],
+                piles[2],
+                piles[3],
                 bitmask,
-                used_pop[0] as u8, used_pop[1] as u8, used_pop[2] as u8, used_pop[3] as u8,
+                used_pop[0] as u8,
+                used_pop[1] as u8,
+                used_pop[2] as u8,
+                used_pop[3] as u8,
             )
         }
         fn dfs(
@@ -375,39 +419,73 @@ impl Heuristic13Bot {
 
             // Try playing a hand card next
             for (hi, card) in hand.iter().enumerate() {
-                if used_hand[hi] { continue; }
+                if used_hand[hi] {
+                    continue;
+                }
                 match card {
                     Card::SkipBo => {
                         for pi in 0..piles.len() {
-                            if path.is_empty() && !first_legal(Src::Hand(hi), pi) { continue; }
+                            if path.is_empty() && !first_legal(Src::Hand(hi), pi) {
+                                continue;
+                            }
                             let old = piles[pi];
                             piles[pi] = inc(piles[pi]);
                             used_hand[hi] = true;
                             path.push((Src::Hand(hi), pi));
-                            if dfs(piles, used_hand, used_pop, hand, discards, played_hand + 1, path, first_legal, visited, nodes) {
+                            if dfs(
+                                piles,
+                                used_hand,
+                                used_pop,
+                                hand,
+                                discards,
+                                played_hand + 1,
+                                path,
+                                first_legal,
+                                visited,
+                                nodes,
+                            ) {
                                 return true;
                             }
                             path.pop();
                             used_hand[hi] = false;
                             piles[pi] = old;
-                            if *nodes >= NODE_LIMIT { return false; }
+                            if *nodes >= NODE_LIMIT {
+                                return false;
+                            }
                         }
                     }
                     Card::Number(v) => {
                         for pi in 0..piles.len() {
-                            if piles[pi] != *v { continue; }
-                            if path.is_empty() && !first_legal(Src::Hand(hi), pi) { continue; }
+                            if piles[pi] != *v {
+                                continue;
+                            }
+                            if path.is_empty() && !first_legal(Src::Hand(hi), pi) {
+                                continue;
+                            }
                             let old = piles[pi];
                             piles[pi] = inc(piles[pi]);
                             used_hand[hi] = true;
                             path.push((Src::Hand(hi), pi));
-                            if dfs(piles, used_hand, used_pop, hand, discards, played_hand + 1, path, first_legal, visited, nodes) {
+                            if dfs(
+                                piles,
+                                used_hand,
+                                used_pop,
+                                hand,
+                                discards,
+                                played_hand + 1,
+                                path,
+                                first_legal,
+                                visited,
+                                nodes,
+                            ) {
                                 return true;
                             }
                             path.pop();
                             used_hand[hi] = false;
                             piles[pi] = old;
-                            if *nodes >= NODE_LIMIT { return false; }
+                            if *nodes >= NODE_LIMIT {
+                                return false;
+                            }
                         }
                     }
                 }
@@ -416,40 +494,74 @@ impl Heuristic13Bot {
             // Try using discard piles as helpers (may pop multiple cards per pile).
             for di in 0..4 {
                 let len = discards[di].len();
-                if used_pop[di] >= len { continue; }
+                if used_pop[di] >= len {
+                    continue;
+                }
                 let card = discards[di][len - 1 - used_pop[di]];
                 match card {
                     Card::SkipBo => {
                         for pi in 0..piles.len() {
-                            if path.is_empty() && !first_legal(Src::Discard(di), pi) { continue; }
+                            if path.is_empty() && !first_legal(Src::Discard(di), pi) {
+                                continue;
+                            }
                             let old = piles[pi];
                             piles[pi] = inc(piles[pi]);
                             used_pop[di] += 1;
                             path.push((Src::Discard(di), pi));
-                            if dfs(piles, used_hand, used_pop, hand, discards, played_hand, path, first_legal, visited, nodes) {
+                            if dfs(
+                                piles,
+                                used_hand,
+                                used_pop,
+                                hand,
+                                discards,
+                                played_hand,
+                                path,
+                                first_legal,
+                                visited,
+                                nodes,
+                            ) {
                                 return true;
                             }
                             path.pop();
                             used_pop[di] -= 1;
                             piles[pi] = old;
-                            if *nodes >= NODE_LIMIT { return false; }
+                            if *nodes >= NODE_LIMIT {
+                                return false;
+                            }
                         }
                     }
                     Card::Number(v) => {
                         for pi in 0..piles.len() {
-                            if piles[pi] != v { continue; }
-                            if path.is_empty() && !first_legal(Src::Discard(di), pi) { continue; }
+                            if piles[pi] != v {
+                                continue;
+                            }
+                            if path.is_empty() && !first_legal(Src::Discard(di), pi) {
+                                continue;
+                            }
                             let old = piles[pi];
                             piles[pi] = inc(piles[pi]);
                             used_pop[di] += 1;
                             path.push((Src::Discard(di), pi));
-                            if dfs(piles, used_hand, used_pop, hand, discards, played_hand, path, first_legal, visited, nodes) {
+                            if dfs(
+                                piles,
+                                used_hand,
+                                used_pop,
+                                hand,
+                                discards,
+                                played_hand,
+                                path,
+                                first_legal,
+                                visited,
+                                nodes,
+                            ) {
                                 return true;
                             }
                             path.pop();
                             used_pop[di] -= 1;
                             piles[pi] = old;
-                            if *nodes >= NODE_LIMIT { return false; }
+                            if *nodes >= NODE_LIMIT {
+                                return false;
+                            }
                         }
                     }
                 }
@@ -459,19 +571,41 @@ impl Heuristic13Bot {
         }
 
         let mut path: Vec<(Src, usize)> = Vec::with_capacity(hand_len + 16);
-        let mut visited: HashSet<(u8, u8, u8, u8, u64, u8, u8, u8, u8)> = HashSet::with_capacity(1024);
+        let mut visited: HashSet<(u8, u8, u8, u8, u64, u8, u8, u8, u8)> =
+            HashSet::with_capacity(1024);
         let mut nodes: usize = 0;
-        if dfs(&mut piles_next, &mut used_hand, &mut used_pop, &state.hand, &discards, 0, &mut path, &is_first_action_legal, &mut visited, &mut nodes) {
+        if dfs(
+            &mut piles_next,
+            &mut used_hand,
+            &mut used_pop,
+            &state.hand,
+            &discards,
+            0,
+            &mut path,
+            &is_first_action_legal,
+            &mut visited,
+            &mut nodes,
+        ) {
             if let Some((src, pi)) = path.first().copied() {
                 // Map first step to a legal action.
                 match src {
                     Src::Hand(hi) => {
-                        let action = Action::Play { source: CardSource::Hand(hi), build_pile: pi };
-                        if legal_actions.contains(&action) { return Some(action); }
+                        let action = Action::Play {
+                            source: CardSource::Hand(hi),
+                            build_pile: pi,
+                        };
+                        if legal_actions.contains(&action) {
+                            return Some(action);
+                        }
                     }
                     Src::Discard(di) => {
-                        let action = Action::Play { source: CardSource::Discard(di), build_pile: pi };
-                        if legal_actions.contains(&action) { return Some(action); }
+                        let action = Action::Play {
+                            source: CardSource::Discard(di),
+                            build_pile: pi,
+                        };
+                        if legal_actions.contains(&action) {
+                            return Some(action);
+                        }
                     }
                 }
             }
@@ -487,10 +621,12 @@ impl Heuristic13Bot {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,
                 },
-                CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied()? {
-                    Card::Number(v) => Some(v),
-                    Card::SkipBo => None,
-                },
+                CardSource::Discard(d) => {
+                    match Self::self_player(state).discard_piles[d].last().copied()? {
+                        Card::Number(v) => Some(v),
+                        Card::SkipBo => None,
+                    }
+                }
                 CardSource::Stock => match Self::self_player(state).stock_top? {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,
@@ -558,12 +694,16 @@ impl Bot for Heuristic13Bot {
             if let Some(v) = Self::played_card_value(state, action) {
                 if v >= 6 && v > stock_value {
                     let pile_len = match action {
-                        Action::Play { build_pile, .. } => state.build_piles[*build_pile].cards.len(),
+                        Action::Play { build_pile, .. } => {
+                            state.build_piles[*build_pile].cards.len()
+                        }
                         _ => 0,
                     };
                     let better = match &best_play {
                         None => true,
-                        Some((best_v, best_len, _)) => v > *best_v || (v == *best_v && pile_len > *best_len),
+                        Some((best_v, best_len, _)) => {
+                            v > *best_v || (v == *best_v && pile_len > *best_len)
+                        }
                     };
                     if better {
                         best_play = Some((v, pile_len, action.clone()));
@@ -578,14 +718,20 @@ impl Bot for Heuristic13Bot {
         // 4) Discard scoring.
         let mut best: Option<(i32, Action)> = None;
         for action in legal_actions.iter() {
-            if let Action::Discard { hand_index, discard_pile } = *action {
+            if let Action::Discard {
+                hand_index,
+                discard_pile,
+            } = *action
+            {
                 let score = Self::score_discard(state, hand_index, discard_pile);
                 if best.as_ref().map(|(s, _)| score > *s).unwrap_or(true) {
                     best = Some((score, action.clone()));
                 }
             }
         }
-        if let Some((_, action)) = best { return action; }
+        if let Some((_, action)) = best {
+            return action;
+        }
 
         // 5) Fallback: prefer a non-blocked play or any non-play; also avoid blocked plays.
         if let Some(action) = legal_actions

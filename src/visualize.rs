@@ -96,7 +96,10 @@ pub fn render_state_with_options(state: &GameStateView, options: VisualOptions) 
         let mut discard_parts = Vec::with_capacity(state.settings.discard_piles);
         for idx in 0..state.settings.discard_piles {
             let pile = &player.discard_piles[idx];
-            let top = pile.last().map(|c| format_card(*c)).unwrap_or_else(|| String::from("--"));
+            let top = pile
+                .last()
+                .map(|c| format_card(*c))
+                .unwrap_or_else(|| String::from("--"));
             if options.show_discard_sizes {
                 discard_parts.push(format!("{}:{} ({})", idx, top, pile.len()));
             } else {

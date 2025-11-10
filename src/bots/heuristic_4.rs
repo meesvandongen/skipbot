@@ -288,10 +288,12 @@ impl Heuristic4Bot {
                     Card::Number(v) => Some(v),
                     Card::SkipBo => None,
                 },
-                CardSource::Discard(d) => match Self::self_player(state).discard_piles[d].last().copied()? {
-                    Card::Number(v) => Some(v),
-                    Card::SkipBo => None,
-                },
+                CardSource::Discard(d) => {
+                    match Self::self_player(state).discard_piles[d].last().copied()? {
+                        Card::Number(v) => Some(v),
+                        Card::SkipBo => None,
+                    }
+                }
                 CardSource::Stock => None, // ignore stock in fallback
             }
         } else {

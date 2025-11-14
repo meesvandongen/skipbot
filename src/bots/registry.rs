@@ -18,6 +18,9 @@ use crate::bots::heuristic_12::Heuristic12Bot;
 use crate::bots::heuristic_13::Heuristic13Bot;
 use crate::bots::heuristic_14::Heuristic14Bot;
 use crate::bots::heuristic_15::Heuristic15Bot;
+use crate::bots::heuristic_16::Heuristic16Bot;
+use crate::bots::heuristic_17::Heuristic17Bot;
+use crate::bots::heuristic_18::Heuristic18Bot;
 use crate::{HeuristicBot, HumanBot, RandomBot};
 
 /// Returns a normalized label for a bot spec (the head token before any ':').
@@ -48,6 +51,9 @@ pub fn label_for_spec(spec: &str) -> String {
 /// - heuristic13
 /// - heuristic14
 /// - heuristic15
+/// - heuristic16
+/// - heuristic17
+/// - heuristic18
 pub fn create_bot_from_spec(
     spec: &str,
     index: usize,
@@ -94,6 +100,12 @@ pub fn create_bot_from_spec(
         Ok(Box::new(Heuristic14Bot::default()))
     } else if spec_lower.starts_with("heuristic15") {
         Ok(Box::new(Heuristic15Bot::default()))
+    } else if spec_lower.starts_with("heuristic16") {
+        Ok(Box::new(Heuristic16Bot::default()))
+    } else if spec_lower.starts_with("heuristic17") {
+        Ok(Box::new(Heuristic17Bot::default()))
+    } else if spec_lower.starts_with("heuristic18") {
+        Ok(Box::new(Heuristic18Bot::default()))
     } else if spec_lower.starts_with("heuristic") {
         Ok(Box::new(HeuristicBot::default()))
     } else {

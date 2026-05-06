@@ -225,10 +225,9 @@ pub fn describe_action_with_options(
             }
         }
         Action::EndTurn => String::from("End turn"),
-        Action::Refresh => match state.settings.refresh_cost {
-            Some(cost) => format!("Refresh hand (pay {cost} Skip-Bo)"),
-            None => String::from("Refresh hand"),
-        },
+        Action::Refresh { jokers_paid } => format!(
+            "Refresh hand (pay {jokers_paid} Skip-Bo + swap {jokers_paid} non-joker)"
+        ),
     }
 }
 

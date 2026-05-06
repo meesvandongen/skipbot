@@ -31,11 +31,13 @@ pub enum Action {
     },
     /// Finish the turn when the hand is empty.
     EndTurn,
-    /// Trade `refresh_cost` Skip-Bo cards (plus the rest of the hand) into the
-    /// recycle pile in exchange for redrawing a fresh hand. Only available when
-    /// the game is configured with `refresh_cost` set and the player holds at
-    /// least that many Skip-Bo cards. Does not end the turn.
-    Refresh,
+    /// Trade `jokers_paid` Skip-Bo cards (the cost) and an equal number of
+    /// non-joker hand cards (the benefit) into the recycle pile, then redraw
+    /// twice that many fresh cards. Only available when the game is configured
+    /// with `max_refresh_jokers = Some(max)` and `1 ≤ jokers_paid ≤ max`, and
+    /// the active player holds at least `jokers_paid` jokers and at least
+    /// `jokers_paid` non-jokers in their hand. Does not end the turn.
+    Refresh { jokers_paid: usize },
 }
 
 impl Action {

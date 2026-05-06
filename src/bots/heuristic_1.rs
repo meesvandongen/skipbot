@@ -134,7 +134,7 @@ impl HeuristicBot {
             Action::EndTurn => -5_000,
             // Existing heuristics ignore the refresh mechanic; treat it as a no-op
             // worse than ending the turn so it never wins selection.
-            Action::Refresh => -10_000,
+            Action::Refresh { .. } => -10_000,
         }
     }
 }

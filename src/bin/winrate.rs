@@ -72,11 +72,12 @@ struct Args {
     #[arg(long = "stock-size")]
     stock_size: Option<usize>,
 
-    /// Enable the joker-trade-for-deck-refresh mechanic with the given cost
-    /// (number of Skip-Bo cards required to use `Action::Refresh`). Omit to
-    /// use vanilla Skip-Bo rules with no refresh action.
-    #[arg(long = "refresh-cost")]
-    refresh_cost: Option<usize>,
+    /// Enable the joker-trade-for-deck-refresh mechanic with the given
+    /// per-use cap. The bot may pay any `k ∈ [1, max]` jokers per refresh,
+    /// each spend swapping `k` jokers + `k` non-jokers for `2k` fresh draws.
+    /// Omit to use vanilla Skip-Bo rules with no refresh action.
+    #[arg(long = "max-refresh-jokers")]
+    max_refresh_jokers: Option<usize>,
 
     /// Player bot specs: e.g., heuristic random (2-6 total)
     bots: Vec<String>,
@@ -116,9 +117,9 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
             return Err("stock-size must be positive".into());
         }
     }
-    if let Some(cost) = args.refresh_cost {
-        if cost == 0 {
-            return Err("refresh-cost must be positive (omit the flag to disable)".into());
+    if let Some(max) = args.max_refresh_jokers {
+        if max == 0 {
+            return Err("max-refresh-jokers must be positive (omit the flag to disable)".into());
         }
     }
 
@@ -151,8 +152,8 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
         if let Some(stock) = args.stock_size {
             builder = builder.with_stock_size(stock);
         }
-        if let Some(cost) = args.refresh_cost {
-            builder = builder.with_refresh_cost(cost);
+        if let Some(max) = args.max_refresh_jokers {
+            builder = builder.with_max_refresh_jokers(max);
         }
         let mut game = builder.build()?;
 

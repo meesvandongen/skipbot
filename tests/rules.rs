@@ -233,86 +233,92 @@ fn refills_hand_after_emptying_during_play() -> Result<(), GameError> {
 
 #[test]
 fn refresh_action_disabled_by_default() -> Result<(), GameError> {
-    // Even with jokers in the hand, vanilla rules expose no Action::Refresh.
-    let draw_sequence = vec![
-        Card::SkipBo,
-        Card::SkipBo,
-        Card::SkipBo,
-        Card::SkipBo,
-        Card::SkipBo,
-    ];
-    let stock_p0 = vec![Card::Number(12)];
-    let stock_p1 = vec![Card::Number(12)];
-    let deck = build_deck(2, &draw_sequence, &[stock_p0, stock_p1]);
-    let game = GameBuilder::new(2)?.with_deck(deck).build()?;
-    let actions = game.legal_actions(0)?;
-    assert!(actions.iter().all(|a| !matches!(a, Action::Refresh)));
-    Ok(())
-}
-
-#[test]
-fn refresh_action_swaps_hand_for_fresh_draws() -> Result<(), GameError> {
-    // Hand will be five Skip-Bo cards. Refresh with cost 2 must succeed:
-    // all five hand cards (incl. the two paid jokers) move to recycle and we
-    // redraw five fresh cards.
-    let draw_sequence = vec![
-        // Refilled hand after refresh (drawn last-first via pop)
-        Card::Number(8),
-        Card::Number(7),
-        Card::Number(6),
-        Card::Number(5),
-        Card::Number(4),
-        // Initial five-card hand (popped first)
-        Card::SkipBo,
-        Card::SkipBo,
-        Card::SkipBo,
-        Card::SkipBo,
-        Card::SkipBo,
-    ];
-    let stock_p0 = vec![Card::Number(12)];
-    let stock_p1 = vec![Card::Number(12)];
-    let deck = build_deck(2, &draw_sequence, &[stock_p0, stock_p1]);
-    let mut game = GameBuilder::new(2)?
-        .with_refresh_cost(2)
-        .with_deck(deck)
-        .build()?;
-    // Initial hand should be all jokers; refresh must be among the legal actions.
-    let view = game.state_view(0)?;
-    assert!(view.hand.iter().all(|c| matches!(c, Card::SkipBo)));
-    let actions = game.legal_actions(0)?;
-    assert!(actions.iter().any(|a| matches!(a, Action::Refresh)));
-
-    game.apply_action(0, Action::Refresh)?;
-
-    let view_after = game.state_view(0)?;
-    assert_eq!(view_after.hand.len(), 5);
-    // Old hand (five jokers) lives in the recycle pile now.
-    assert_eq!(view_after.recycle_pile_count, 5);
-    // New hand should be a fresh draw of numbers, no jokers left.
-    assert!(view_after.hand.iter().all(|c| matches!(c, Card::Number(_))));
-    // The same player still has the turn.
-    assert_eq!(game.current_player(), 0);
-    Ok(())
-}
-
-#[test]
-fn refresh_rejected_when_not_enough_jokers() -> Result<(), GameError> {
+    // Even with a balanced hand, vanilla rules expose no Action::Refresh.
     let draw_sequence = vec![
         Card::Number(2),
         Card::Number(3),
-        Card::Number(4),
+        Card::SkipBo,
         Card::SkipBo,
         Card::Number(1),
     ];
     let stock_p0 = vec![Card::Number(12)];
     let stock_p1 = vec![Card::Number(12)];
     let deck = build_deck(2, &draw_sequence, &[stock_p0, stock_p1]);
+    let game = GameBuilder::new(2)?.with_deck(deck).build()?;
+    let actions = game.legal_actions(0)?;
+    assert!(actions.iter().all(|a| !matches!(a, Action::Refresh { .. })));
+    Ok(())
+}
+
+#[test]
+fn refresh_swaps_k_jokers_and_k_non_jokers() -> Result<(), GameError> {
+    // Hand will be three Skip-Bo cards + two numbered cards. With max=2, the
+    // legal Refresh actions are k=1 and k=2 (each requires k jokers AND k
+    // non-jokers). Apply k=1 and verify the leftmost joker + leftmost
+    // non-joker were swapped.
+    let draw_sequence = vec![
+        // Refilled cards drawn after refresh (popped last-to-first)
+        Card::Number(8),
+        Card::Number(7),
+        // Initial hand (popped first → indices 0..=4 below)
+        Card::SkipBo,    // hand[4] (popped first → ends up last in hand)
+        Card::Number(2), // hand[3]
+        Card::SkipBo,    // hand[2]
+        Card::Number(1), // hand[1]
+        Card::SkipBo,    // hand[0]
+    ];
+    let stock_p0 = vec![Card::Number(12)];
+    let stock_p1 = vec![Card::Number(12)];
+    let deck = build_deck(2, &draw_sequence, &[stock_p0, stock_p1]);
+    let mut game = GameBuilder::new(2)?
+        .with_max_refresh_jokers(2)
+        .with_deck(deck)
+        .build()?;
+    let view = game.state_view(0)?;
+    let joker_count = view.hand.iter().filter(|c| matches!(c, Card::SkipBo)).count();
+    let non_joker_count = view.hand.len() - joker_count;
+    assert_eq!(joker_count, 3);
+    assert_eq!(non_joker_count, 2);
+    let actions = game.legal_actions(0)?;
+    let refresh_ks: Vec<usize> = actions
+        .iter()
+        .filter_map(|a| match a {
+            Action::Refresh { jokers_paid } => Some(*jokers_paid),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(refresh_ks, vec![1, 2]);
+
+    game.apply_action(0, Action::Refresh { jokers_paid: 1 })?;
+    let view_after = game.state_view(0)?;
+    // Hand size unchanged (5).
+    assert_eq!(view_after.hand.len(), 5);
+    // Two cards (1 joker + 1 non-joker) recycled.
+    assert_eq!(view_after.recycle_pile_count, 2);
+    // Same player still has the turn.
+    assert_eq!(game.current_player(), 0);
+    Ok(())
+}
+
+#[test]
+fn refresh_rejected_when_no_non_jokers() -> Result<(), GameError> {
+    // All-joker hand cannot trigger refresh: there are no non-jokers to swap.
+    let draw_sequence = vec![
+        Card::SkipBo,
+        Card::SkipBo,
+        Card::SkipBo,
+        Card::SkipBo,
+        Card::SkipBo,
+    ];
+    let stock_p0 = vec![Card::Number(12)];
+    let stock_p1 = vec![Card::Number(12)];
+    let deck = build_deck(2, &draw_sequence, &[stock_p0, stock_p1]);
     let game = GameBuilder::new(2)?
-        .with_refresh_cost(3)
+        .with_max_refresh_jokers(3)
         .with_deck(deck)
         .build()?;
     let actions = game.legal_actions(0)?;
-    assert!(actions.iter().all(|a| !matches!(a, Action::Refresh)));
+    assert!(actions.iter().all(|a| !matches!(a, Action::Refresh { .. })));
     Ok(())
 }
 

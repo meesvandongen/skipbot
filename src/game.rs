@@ -21,7 +21,7 @@ pub struct GameConfig {
     pub num_players: usize,
     pub seed: u64,
     pub stock_size: Option<usize>,
-    pub refresh_cost: Option<usize>,
+    pub max_refresh_jokers: Option<usize>,
 }
 
 impl GameConfig {
@@ -31,7 +31,7 @@ impl GameConfig {
             num_players,
             seed,
             stock_size: None,
-            refresh_cost: None,
+            max_refresh_jokers: None,
         })
     }
 }
@@ -67,11 +67,12 @@ impl GameBuilder {
         self
     }
 
-    /// Enable the joker-trade-for-deck-refresh mechanic. `cost` Skip-Bo cards
-    /// from the hand are required to use `Action::Refresh`; setting `cost = 0`
-    /// is rejected (use `None`/vanilla rules instead).
-    pub fn with_refresh_cost(mut self, cost: usize) -> Self {
-        self.config.refresh_cost = Some(cost);
+    /// Enable the joker-trade-for-deck-refresh mechanic. The player may use
+    /// `Action::Refresh { jokers_paid: k }` for any `k ∈ [1, max]`; each use
+    /// trades `k` jokers + `k` non-jokers for `2k` fresh draws. Setting
+    /// `max = 0` is rejected (use `None`/vanilla rules to disable).
+    pub fn with_max_refresh_jokers(mut self, max: usize) -> Self {
+        self.config.max_refresh_jokers = Some(max);
         self
     }
 
@@ -218,14 +219,18 @@ impl Game {
             actions.push(Action::EndTurn);
         }
 
-        if let Some(cost) = self.settings.refresh_cost {
+        if let Some(max) = self.settings.max_refresh_jokers {
             let joker_count = player_state
                 .hand
                 .iter()
                 .filter(|c| c.is_skip_bo())
                 .count();
-            if joker_count >= cost && !player_state.hand.is_empty() {
-                actions.push(Action::Refresh);
+            let non_joker_count = player_state.hand.len() - joker_count;
+            // Each refresh swaps k jokers + k non-jokers, so practical max is
+            // bounded by both counts as well as the configured cap.
+            let max_k = joker_count.min(non_joker_count).min(max);
+            for k in 1..=max_k {
+                actions.push(Action::Refresh { jokers_paid: k });
             }
         }
 
@@ -258,7 +263,7 @@ impl Game {
                 }
                 self.advance_turn();
             }
-            Action::Refresh => self.refresh_hand()?,
+            Action::Refresh { jokers_paid } => self.refresh_hand(jokers_paid)?,
         }
 
         Ok(())
@@ -286,13 +291,13 @@ impl Game {
             }
             settings.stock_size = custom_stock;
         }
-        if let Some(cost) = config.refresh_cost {
-            if cost == 0 {
+        if let Some(max) = config.max_refresh_jokers {
+            if max == 0 {
                 return Err(GameError::InvalidConfiguration(
-                    "refresh cost must be positive",
+                    "max_refresh_jokers must be positive",
                 ));
             }
-            settings.refresh_cost = Some(cost);
+            settings.max_refresh_jokers = Some(max);
         }
         let mut rng = StdRng::seed_from_u64(config.seed);
         let mut deck = if let Some(deck) = deck {
@@ -434,24 +439,47 @@ impl Game {
         Ok(())
     }
 
-    fn refresh_hand(&mut self) -> Result<(), GameError> {
-        let cost = self
+    fn refresh_hand(&mut self, jokers_paid: usize) -> Result<(), GameError> {
+        let max = self
             .settings
-            .refresh_cost
+            .max_refresh_jokers
             .ok_or(GameError::InvalidConfiguration(
                 "refresh action used while refresh mechanic is disabled",
             ))?;
-        let player_state = &mut self.players[self.current_player];
-        let joker_count = player_state.hand.iter().filter(|c| c.is_skip_bo()).count();
-        if joker_count < cost {
+        if jokers_paid == 0 || jokers_paid > max {
             return Err(InvalidAction::NoCardAvailable.into());
         }
-        if player_state.hand.is_empty() {
-            return Err(InvalidAction::EmptyHand.into());
+        let player_state = &mut self.players[self.current_player];
+        let joker_count = player_state.hand.iter().filter(|c| c.is_skip_bo()).count();
+        let non_joker_count = player_state.hand.len() - joker_count;
+        if joker_count < jokers_paid || non_joker_count < jokers_paid {
+            return Err(InvalidAction::NoCardAvailable.into());
         }
-        // Move the entire hand (jokers paid + remaining cards) into the recycle
-        // pile. The cost is implicit in the joker requirement above.
-        self.recycle_pile.extend(player_state.hand.drain(..));
+        // Pick the leftmost `jokers_paid` joker indices and the leftmost
+        // `jokers_paid` non-joker indices. Choice of "leftmost" is arbitrary
+        // and deterministic; bots could improve this by also choosing which
+        // non-jokers to discard, but this experiment intentionally keeps the
+        // engine's choice fixed so that the only knob is the joker count.
+        let mut to_remove: Vec<usize> = Vec::with_capacity(jokers_paid * 2);
+        let mut joker_taken = 0usize;
+        let mut non_joker_taken = 0usize;
+        for (i, card) in player_state.hand.iter().enumerate() {
+            if card.is_skip_bo() {
+                if joker_taken < jokers_paid {
+                    to_remove.push(i);
+                    joker_taken += 1;
+                }
+            } else if non_joker_taken < jokers_paid {
+                to_remove.push(i);
+                non_joker_taken += 1;
+            }
+        }
+        // Remove from the back so earlier indices stay valid.
+        to_remove.sort_unstable_by(|a, b| b.cmp(a));
+        for idx in to_remove {
+            let card = player_state.hand.remove(idx);
+            self.recycle_pile.push(card);
+        }
         // Refill the hand from the draw pile (auto-recycles when exhausted).
         let target = self.settings.hand_size;
         let current = self.current_player;

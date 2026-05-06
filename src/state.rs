@@ -12,10 +12,11 @@ pub struct GameSettings {
     pub hand_size: usize,
     pub discard_piles: usize,
     pub build_piles: usize,
-    /// When set, players may use `Action::Refresh` to recycle their entire
-    /// hand and redraw, paying this many Skip-Bo cards as the cost. `None`
-    /// disables the mechanic (vanilla Skip-Bo rules).
-    pub refresh_cost: Option<usize>,
+    /// When set, players may use `Action::Refresh { jokers_paid: k }` for any
+    /// `k` in `1..=max_refresh_jokers` (provided they hold enough jokers and
+    /// non-jokers in hand). Each refresh swaps `k` jokers + `k` non-jokers for
+    /// `2k` fresh draws. `None` disables the mechanic (vanilla Skip-Bo rules).
+    pub max_refresh_jokers: Option<usize>,
 }
 
 impl GameSettings {
@@ -32,7 +33,7 @@ impl GameSettings {
             hand_size: HAND_SIZE,
             discard_piles: DISCARD_PILE_COUNT,
             build_piles: BUILD_PILE_COUNT,
-            refresh_cost: None,
+            max_refresh_jokers: None,
         })
     }
 }

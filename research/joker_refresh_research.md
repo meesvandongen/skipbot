@@ -45,35 +45,38 @@ run below.
 ## Methodology
 
 - Match-up: `jokerrefresh` (under test) vs. `heuristic13` (control), 1 v 1.
-- 10,000 games per scenario, seating permuted each game.
+- 100,000 games per scenario, seating permuted each game.
 - `--stock-size 20`, `--max-turns 10000` (matches `heuristic_research.md`).
 - Seed: default (`0xC0FFEE...5EED`), so all scenarios use identical decks
   and seating; only the refresh cost changes between rows.
 - Command template:
-  `cargo run --quiet --release --bin winrate -- --games 10000 --no-chart --max-turns 10000 --stock-size 20 --refresh-cost <N> jokerrefresh heuristic13`
+  `cargo run --quiet --release --bin winrate -- --games 100000 --no-chart --max-turns 10000 --stock-size 20 --refresh-cost <N> jokerrefresh heuristic13`
+- At 100,000 games per cell the standard error of the win-rate estimate is
+  ≈ √(0.25 / 100000) ≈ 0.16 pp; differences smaller than ~0.5 pp are noise.
 
 ## Results
 
-| Scenario          | jokerrefresh win % | heuristic13 win % | Δ (jr − h13) | jr decisions | h13 decisions | Notes                                                              |
-| ----------------- | ------------------ | ----------------- | -----------: | -----------: | ------------: | ------------------------------------------------------------------ |
-| no refresh (ctrl) | 50.59              | 49.23             |        +1.36 |    1,037,348 |     1,031,639 | Sanity: refresh disabled, behavior identical to heuristic13.       |
-| cost = 1 joker    | 43.95              | 55.99             |       −12.04 |    1,114,098 |     1,060,784 | Refresh fires constantly (~5–8×/game); jr collapses.               |
-| cost = 2 jokers   | 46.75              | 53.03             |        −6.28 |    1,043,604 |     1,056,873 | Refresh still fires often and is value-destructive.                |
-| cost = 3 jokers   | 50.51              | 49.28             |        +1.23 |    1,037,590 |     1,036,038 | Refresh rarely fires; jr ≈ heuristic13 within noise.               |
-| cost = 4 jokers   | 50.60              | 49.22             |        +1.38 |    1,037,395 |     1,031,683 | Refresh effectively never fires (need 4/5 hand cards to be jokers). |
-| cost = 5 jokers   | 50.59              | 49.23             |        +1.36 |    1,037,348 |     1,031,639 | Identical to "no refresh" scenario — never fires.                  |
+| Scenario          | jokerrefresh win % | heuristic13 win % | Δ (jr − h13) | jr decisions | h13 decisions | Notes                                                                                                  |
+| ----------------- | -----------------: | ----------------: | -----------: | -----------: | ------------: | ------------------------------------------------------------------------------------------------------ |
+| no refresh (ctrl) |              50.11 |             49.72 |       +0.39 |  10,324,972 |   10,328,169 | Sanity: refresh disabled, behavior identical to heuristic13.                                            |
+| cost = 1 joker    |              43.83 |             56.12 |      −12.29 |  11,102,281 |   10,618,668 | Refresh fires on most "stuck" turns; jr decisions +777k over baseline (~10× more refreshes than cost=2). |
+| cost = 2 jokers   |              46.19 |             53.61 |       −7.42 |  10,386,975 |   10,586,833 | Refresh fires occasionally (jr decisions +62k over baseline); per-use cost higher but ~12× rarer.       |
+| cost = 3 jokers   |              49.64 |             50.17 |       −0.53 |  10,319,518 |   10,369,636 | Refresh rarely fires; jr is mildly worse than the no-refresh control.                                  |
+| cost = 4 jokers   |              50.09 |             49.74 |       +0.35 |  10,324,988 |   10,329,622 | Refresh effectively never fires (need ≥4/5 hand cards to be jokers).                                  |
+| cost = 5 jokers   |              50.11 |             49.72 |       +0.39 |  10,324,972 |   10,328,169 | Bit-identical to no-refresh — never fires.                                                              |
 
 (*"jr decisions" / "h13 decisions" are total `select_action` calls across
-the 10,000 games. The deltas above the no-refresh baseline measure how
-often `jokerrefresh` actually invoked the refresh action: each refresh
-adds one extra decision for the active player on the same turn.*)
+the 100,000 games. The excess of `jokerrefresh` decisions over the
+no-refresh baseline (10.32M) is a frequency proxy: each refresh adds
+several extra decisions on the same turn — try-to-play each of the 5
+fresh cards.*)
 
 ## Interpretation
 
 The headline answer to "how many jokers should be traded for a deck
-refresh?" using this naive trigger policy is: **none of them — at any of
-the tested costs, the wrapper is at best neutral and at worst loses 12
-percentage points of win rate.**
+refresh?" using this naive trigger policy is: **none of them — at every
+tested cost the wrapper is no better than plain heuristic13, and at
+costs 1–2 it loses 7–12 pp of win rate.**
 
 A few observations explain why:
 
@@ -86,21 +89,34 @@ A few observations explain why:
    jokers held in reserve. Cycling that hand burns the reserve to retry
    for the same shape of cards; the expected gain is small while the
    expected joker loss is the entire cost.
-3. **At cost ≥ 3 the action becomes self-limiting.** Because a fresh
-   hand size is 5, holding 3+ jokers concurrently is uncommon, and when
-   it does happen heuristic13 has usually already played one of them
-   for stock progress. The action almost never appears legal, so the
-   policy regresses to pure heuristic13.
-4. **Cost 5 is functionally a no-op.** Triggering it requires all five
-   hand cards to be jokers; even if that happens, heuristic13 will
-   normally play at least one of them onto a build pile before the
-   wrapper gets a chance to trigger refresh.
-5. **Determinism check.** Cost = 5 reproduces the no-refresh scenario
-   bit-for-bit (same wins, same decision counts), confirming the
-   refresh path is never taken in that regime.
+3. **The win-rate curve is non-monotonic in cost — and that's the
+   frequency effect, not noise.** A natural intuition is that "cost=2
+   should be at least as bad as cost=1, since you pay more jokers per
+   refresh." But in this engine the cost parameter does double duty: it
+   sets both the per-use price *and* the eligibility threshold (need
+   ≥cost jokers in hand). Raising it from 1 to 2 cut refresh frequency
+   by ~12× (jr-decision excess over baseline: +777k → +62k), which
+   dwarfs the per-use-cost increase. Cost=1 is the worst because it's
+   the cost at which the bot can — and does — abuse the action almost
+   every stuck turn. By cost=3 the eligibility precondition is rare
+   enough that the action is essentially gated off and the bot reverts
+   to heuristic13.
+4. **At cost ≥ 4 the action becomes self-limiting.** Holding 4+ jokers
+   concurrently is uncommon, and when it happens heuristic13 has
+   usually already played one of them for stock progress. The action
+   almost never appears legal, so the policy regresses to pure
+   heuristic13.
+5. **Cost 5 is a determinism check.** It reproduces the no-refresh
+   scenario bit-for-bit (50.11 vs 49.72, identical decision counts),
+   confirming the refresh path is never taken in that regime.
 
 ## Caveats and possible follow-ups
 
+- The cost parameter conflates eligibility-threshold and per-use-price.
+  A cleaner experiment would decouple them: e.g. fix eligibility at
+  ≥1 joker, and vary how many jokers are spent per refresh. That would
+  isolate per-use cost from frequency-of-abuse and likely produce the
+  monotonic curve the intuition predicts.
 - This is a single bot-policy data point, not a search over policies. A
   smarter policy that refreshes only when the *specific* hand composition
   guarantees a stalled turn (e.g. all numbered cards above the current

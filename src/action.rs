@@ -31,6 +31,11 @@ pub enum Action {
     },
     /// Finish the turn when the hand is empty.
     EndTurn,
+    /// Trade `refresh_cost` Skip-Bo cards (plus the rest of the hand) into the
+    /// recycle pile in exchange for redrawing a fresh hand. Only available when
+    /// the game is configured with `refresh_cost` set and the player holds at
+    /// least that many Skip-Bo cards. Does not end the turn.
+    Refresh,
 }
 
 impl Action {

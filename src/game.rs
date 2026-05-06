@@ -21,6 +21,7 @@ pub struct GameConfig {
     pub num_players: usize,
     pub seed: u64,
     pub stock_size: Option<usize>,
+    pub refresh_cost: Option<usize>,
 }
 
 impl GameConfig {
@@ -30,6 +31,7 @@ impl GameConfig {
             num_players,
             seed,
             stock_size: None,
+            refresh_cost: None,
         })
     }
 }
@@ -62,6 +64,14 @@ impl GameBuilder {
     /// rules apply: 30 cards for up to 4 players, otherwise 20.
     pub fn with_stock_size(mut self, stock_size: usize) -> Self {
         self.config.stock_size = Some(stock_size);
+        self
+    }
+
+    /// Enable the joker-trade-for-deck-refresh mechanic. `cost` Skip-Bo cards
+    /// from the hand are required to use `Action::Refresh`; setting `cost = 0`
+    /// is rejected (use `None`/vanilla rules instead).
+    pub fn with_refresh_cost(mut self, cost: usize) -> Self {
+        self.config.refresh_cost = Some(cost);
         self
     }
 
@@ -208,6 +218,17 @@ impl Game {
             actions.push(Action::EndTurn);
         }
 
+        if let Some(cost) = self.settings.refresh_cost {
+            let joker_count = player_state
+                .hand
+                .iter()
+                .filter(|c| c.is_skip_bo())
+                .count();
+            if joker_count >= cost && !player_state.hand.is_empty() {
+                actions.push(Action::Refresh);
+            }
+        }
+
         Ok(actions)
     }
 
@@ -237,6 +258,7 @@ impl Game {
                 }
                 self.advance_turn();
             }
+            Action::Refresh => self.refresh_hand()?,
         }
 
         Ok(())
@@ -263,6 +285,14 @@ impl Game {
                 ));
             }
             settings.stock_size = custom_stock;
+        }
+        if let Some(cost) = config.refresh_cost {
+            if cost == 0 {
+                return Err(GameError::InvalidConfiguration(
+                    "refresh cost must be positive",
+                ));
+            }
+            settings.refresh_cost = Some(cost);
         }
         let mut rng = StdRng::seed_from_u64(config.seed);
         let mut deck = if let Some(deck) = deck {
@@ -401,6 +431,39 @@ impl Game {
                 }
             }
         }
+        Ok(())
+    }
+
+    fn refresh_hand(&mut self) -> Result<(), GameError> {
+        let cost = self
+            .settings
+            .refresh_cost
+            .ok_or(GameError::InvalidConfiguration(
+                "refresh action used while refresh mechanic is disabled",
+            ))?;
+        let player_state = &mut self.players[self.current_player];
+        let joker_count = player_state.hand.iter().filter(|c| c.is_skip_bo()).count();
+        if joker_count < cost {
+            return Err(InvalidAction::NoCardAvailable.into());
+        }
+        if player_state.hand.is_empty() {
+            return Err(InvalidAction::EmptyHand.into());
+        }
+        // Move the entire hand (jokers paid + remaining cards) into the recycle
+        // pile. The cost is implicit in the joker requirement above.
+        self.recycle_pile.extend(player_state.hand.drain(..));
+        // Refill the hand from the draw pile (auto-recycles when exhausted).
+        let target = self.settings.hand_size;
+        let current = self.current_player;
+        while self.players[current].hand.len() < target {
+            match self.draw_card() {
+                Some(card) => self.players[current].hand.push(card),
+                None => break,
+            }
+        }
+        // Refresh counts as productive activity for stalemate accounting.
+        self.played_this_turn = true;
+        self.stale_turns = 0;
         Ok(())
     }
 

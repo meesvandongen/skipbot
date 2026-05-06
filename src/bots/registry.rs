@@ -21,6 +21,7 @@ use crate::bots::heuristic_15::Heuristic15Bot;
 use crate::bots::heuristic_16::Heuristic16Bot;
 use crate::bots::heuristic_17::Heuristic17Bot;
 use crate::bots::heuristic_18::Heuristic18Bot;
+use crate::bots::joker_refresh::JokerRefreshBot;
 use crate::{HeuristicBot, HumanBot, RandomBot};
 
 /// Returns a normalized label for a bot spec (the head token before any ':').
@@ -54,6 +55,8 @@ pub fn label_for_spec(spec: &str) -> String {
 /// - heuristic16
 /// - heuristic17
 /// - heuristic18
+/// - jokerrefresh   (combo-architect + opportunistic deck refresh; refresh cost
+///   comes from the game's `refresh_cost` setting)
 pub fn create_bot_from_spec(
     spec: &str,
     index: usize,
@@ -106,6 +109,8 @@ pub fn create_bot_from_spec(
         Ok(Box::new(Heuristic17Bot::default()))
     } else if spec_lower.starts_with("heuristic18") {
         Ok(Box::new(Heuristic18Bot::default()))
+    } else if spec_lower.starts_with("jokerrefresh") {
+        Ok(Box::new(JokerRefreshBot::default()))
     } else if spec_lower.starts_with("heuristic") {
         Ok(Box::new(HeuristicBot::default()))
     } else {

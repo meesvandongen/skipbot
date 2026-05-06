@@ -48,6 +48,7 @@ mod tests {
                 hand_size: 5,
                 discard_piles: 4,
                 build_piles: 4,
+                refresh_cost: None,
             },
             phase: TurnPhase::GameOver,
             status: GameStatus::Finished { winner },

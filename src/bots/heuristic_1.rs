@@ -132,9 +132,6 @@ impl HeuristicBot {
             } => Self::score_discard(state, *hand_index, *discard_pile),
             // Strong penalty: if any useful move exists, don't end the turn yet.
             Action::EndTurn => -5_000,
-            // Existing heuristics ignore the refresh mechanic; treat it as a no-op
-            // worse than ending the turn so it never wins selection.
-            Action::Refresh { .. } => -10_000,
         }
     }
 }

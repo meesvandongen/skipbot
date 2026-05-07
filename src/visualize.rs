@@ -225,9 +225,6 @@ pub fn describe_action_with_options(
             }
         }
         Action::EndTurn => String::from("End turn"),
-        Action::Refresh { jokers_paid } => format!(
-            "Refresh hand (pay {jokers_paid} Skip-Bo + swap {jokers_paid} non-joker)"
-        ),
     }
 }
 

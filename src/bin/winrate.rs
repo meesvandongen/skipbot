@@ -72,13 +72,6 @@ struct Args {
     #[arg(long = "stock-size")]
     stock_size: Option<usize>,
 
-    /// Enable the joker-trade-for-deck-refresh mechanic with the given
-    /// per-use cap. The bot may pay any `k ∈ [1, max]` jokers per refresh,
-    /// each spend swapping `k` jokers + `k` non-jokers for `2k` fresh draws.
-    /// Omit to use vanilla Skip-Bo rules with no refresh action.
-    #[arg(long = "max-refresh-jokers")]
-    max_refresh_jokers: Option<usize>,
-
     /// Player bot specs: e.g., heuristic random (2-6 total)
     bots: Vec<String>,
 }
@@ -117,11 +110,6 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
             return Err("stock-size must be positive".into());
         }
     }
-    if let Some(max) = args.max_refresh_jokers {
-        if max == 0 {
-            return Err("max-refresh-jokers must be positive (omit the flag to disable)".into());
-        }
-    }
 
     // Aggregate counts across all games.
     let mut wins_per_label: HashMap<String, usize> = HashMap::new();
@@ -151,9 +139,6 @@ fn run(args: Args) -> Result<(), Box<dyn Error>> {
         let mut builder = Game::builder(players_per_game)?.with_seed(deck_seed);
         if let Some(stock) = args.stock_size {
             builder = builder.with_stock_size(stock);
-        }
-        if let Some(max) = args.max_refresh_jokers {
-            builder = builder.with_max_refresh_jokers(max);
         }
         let mut game = builder.build()?;
 

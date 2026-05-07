@@ -1,149 +1,121 @@
-# Joker Refresh Experiment
+# Joker-Spending Tactic Experiment
 
-How many jokers (Skip-Bo wild cards) should be traded for a deck refresh?
+When the active player holds Skip-Bo (joker) cards and Heuristic 13 wants to
+use them in this turn's stock-progression / hand-clearing combo, is it
+better to **spend** the jokers now or **save** them for a later turn?
 
-## Mechanic
+This experiment varies a single tunable: the largest hand-joker count `N`
+at which the bot is allowed to spend any joker on the current turn. If the
+hand currently holds *more* jokers than `N`, every joker-using Play action
+is suppressed for that turn — those jokers are saved for a future turn
+instead.
 
-The engine gains an optional rule, configured via
-`GameBuilder::with_max_refresh_jokers(max)` (or `--max-refresh-jokers` on
-the `winrate` binary). When the rule is enabled, players gain access to
-a parameterised action `Action::Refresh { jokers_paid: k }` that:
+Per the framing:
 
-1. Is legal for any `k ∈ [1, max]` such that the active player holds
-   **at least `k` Skip-Bo cards AND at least `k` non-Skip-Bo cards** in
-   their hand.
-2. Sends `k` Skip-Bo cards (the cost) and `k` non-joker cards (the
-   benefit — the "stuck" cards being cycled out) into the recycle pile.
-3. Draws `2k` fresh cards back into the hand, keeping the hand size at
-   `hand_size = 5`.
-4. Does **not** end the turn — the player continues with their refreshed
-   hand.
+- `N = 1`: spend jokers only when the hand has exactly **1** joker.
+- `N = 2`: spend jokers only when the hand has **1 or 2** jokers.
+- `N = 5`: spend jokers whenever — equivalent to plain Heuristic 13, since
+  hand size is 5 and so `joker_count ≤ 5` always.
 
-This is the "up-to-N jokers" semantics: `max` is a *cap*, not a fixed
-price. The player chooses any `k` in `[1, max]` per use, so a higher
-`max` strictly subsumes a lower one (more options for the player).
+The game rules are vanilla Skip-Bo throughout. No engine changes —
+this is purely a bot-policy experiment.
 
-Vanilla Skip-Bo rules are preserved when `max_refresh_jokers = None`.
+## Bot Policy: `jokertactic:N`
 
-> Note on the previous design. An earlier iteration of this experiment
-> used a single fixed cost: `Action::Refresh` always burned the entire
-> hand for exactly `cost` Skip-Bos, and only became legal when the
-> player held ≥`cost` jokers. That conflated per-use price with the
-> eligibility threshold and produced a non-monotonic curve. The current
-> design separates the two.
+The bot wraps Heuristic 13 (the strongest existing heuristic, "combo
+architect", 95.71% baseline win rate) and gates its joker-using moves on
+the per-turn budget `N`.
 
-## Bot Policy: `jokerrefresh`
+For every decision:
 
-The `jokerrefresh` bot wraps the strongest existing heuristic
-(`heuristic13`, "combo architect", 95.71% baseline win rate). It
-delegates to heuristic13 for all play decisions, then:
+1. Count Skip-Bo cards in the current hand.
+2. If `joker_count == 0` or `joker_count <= N`, defer to plain Heuristic 13.
+   The combo plays — `can_play_stock`'s prefix sequence and
+   `can_play_all_hand`'s full hand-clear, both of which may consume one or
+   more jokers — are **allowed**.
+3. Otherwise (`joker_count > N`): filter every Play action that would
+   consume a Skip-Bo (from hand, stock top, or any discard top) out of
+   `legal_actions` and re-run Heuristic 13 against the filtered list.
+   Heuristic 13 will fall through to a non-joker play, a discard, or end
+   turn as appropriate. The held jokers stay in the hand for the next
+   turn.
 
-1. If heuristic13 returns a `Play`, keep it — productive plays always
-   beat cycling cards.
-2. If at least one `Action::Refresh { jokers_paid: k }` is legal, pick
-   the **smallest** legal `k` (= 1) and refresh. Each additional joker
-   spent only buys swapping one more non-joker card, and jokers are far
-   more valuable than the random card we'd get back, so wasting jokers
-   beyond what's needed to trigger the action is strictly bad.
-3. Otherwise fall back to heuristic13's choice (typically a `Discard`).
-
-Because the bot always picks k = 1, raising `max_refresh_jokers` above
-1 does not change its behaviour. That is in fact the whole point of
-this experiment: it confirms that the "up-to-N" reading of cost makes
-the rule monotonic in `max` (more options never hurt).
+This gives a clean experimental knob: as `N` grows, the bot becomes more
+willing to spend jokers in this turn's combos.
 
 ## Methodology
 
-- Match-up: `jokerrefresh` (under test) vs. `heuristic13` (control), 1 v 1.
+- Match-up: `jokertactic:N` (under test) vs. `heuristic13` (control), 1 v 1.
 - 100,000 games per scenario, seating permuted each game.
 - `--stock-size 20`, `--max-turns 10000` (matches `heuristic_research.md`).
-- Seed: default (`0xC0FFEE...5EED`), so all scenarios use identical
-  decks and seating.
-- At 100,000 games per cell the standard error of the win-rate estimate
-  is ≈ √(0.25 / 100000) ≈ 0.16 pp; differences smaller than ~0.5 pp
-  are noise.
+- Seed: default (`0xC0FFEE...5EED`), so all scenarios use identical decks
+  and seating; only the joker budget changes between rows.
+- At 100,000 games per cell the standard error of the win-rate estimate is
+  ≈ √(0.25 / 100000) ≈ 0.16 pp; differences smaller than ~0.5 pp are noise.
 - Command template:
-  `cargo run --quiet --release --bin winrate -- --games 100000 --no-chart --max-turns 10000 --stock-size 20 --max-refresh-jokers <N> jokerrefresh heuristic13`
+  `cargo run --quiet --release --bin winrate -- --games 100000 --no-chart --max-turns 10000 --stock-size 20 jokertactic:<N> heuristic13`
 
 ## Results
 
-| Scenario           | jokerrefresh win % | heuristic13 win % | Δ (jr − h13) |  jr decisions | h13 decisions | Notes                                                                |
-| ------------------ | -----------------: | ----------------: | -----------: | ------------: | ------------: | -------------------------------------------------------------------- |
-| no refresh (ctrl)  |              50.11 |             49.72 |       +0.39 |    10,324,972 |    10,328,169 | Sanity: refresh disabled, behaviour identical to heuristic13.         |
-| max = 1 joker      |              33.59 |             66.27 |      −32.68 |    11,275,015 |    11,453,628 | Refresh fires every time the bot is stuck and has ≥1 joker + ≥1 non-joker. |
-| max = 2 jokers     |              33.59 |             66.27 |      −32.68 |    11,275,015 |    11,453,628 | Bit-identical to max=1 — bot picks k=1 in every case.                  |
-| max = 3 jokers     |              33.59 |             66.27 |      −32.68 |    11,275,015 |    11,453,628 | Bit-identical.                                                          |
-| max = 4 jokers     |              33.59 |             66.27 |      −32.68 |    11,275,015 |    11,453,628 | Bit-identical.                                                          |
-| max = 5 jokers     |              33.59 |             66.27 |      −32.68 |    11,275,015 |    11,453,628 | Bit-identical.                                                          |
+| Scenario               | jokertactic win % | heuristic13 win % | Δ (jt − h13) |   jt decisions |  h13 decisions | Notes                                                                                              |
+| ---------------------- | ----------------: | ----------------: | -----------: | -------------: | -------------: | -------------------------------------------------------------------------------------------------- |
+| `jokertactic:1` vs h13 |             42.77 |             57.00 |       −14.23 |     10,337,116 |     10,629,474 | Bot saves jokers whenever it has ≥2 in hand. Joker-using combos suppressed often → big regression. |
+| `jokertactic:2` vs h13 |             49.22 |             50.60 |        −1.38 |     10,330,941 |     10,372,591 | Saves jokers only when ≥3 in hand. Rare suppression — small but measurable hit (≈9× SE).           |
+| `jokertactic:3` vs h13 |             50.10 |             49.73 |        +0.37 |     10,326,767 |     10,331,554 | Saves only when ≥4 in hand. Suppression event is uncommon; result within noise of plain h13.        |
+| `jokertactic:4` vs h13 |             50.11 |             49.72 |        +0.39 |     10,324,961 |     10,328,222 | Saves only when hand is all 5 jokers. Negligible — within noise of plain h13.                       |
+| `jokertactic:5` vs h13 |             50.11 |             49.72 |        +0.39 |     10,324,972 |     10,328,169 | Equivalent to plain h13 (joker_count ≤ 5 always). Sanity check.                                     |
 
-(*"jr decisions" / "h13 decisions" are total `select_action` calls
-across the 100,000 games. `jokerrefresh` accumulates +950k decisions
-over its no-refresh baseline (10.32M → 11.28M); `heuristic13`
-accumulates +1.13M decisions over its baseline (10.33M → 11.45M)
-because games run longer when jokerrefresh is bleeding stock.*)
+(*"jt decisions" / "h13 decisions" are total `select_action` calls across
+the 100,000 games. Note that the suppression mechanism actually *reduces*
+`jokertactic`'s own per-turn decision count — when the joker-using combo is
+skipped, the bot stalls into a single discard rather than chaining several
+plays — but games run longer overall, so h13's totals climb. At N=1 h13
+gains +301k decisions over the baseline (10.33M → 10.63M); at N=2 +44k;
+and N≥3 is essentially zero.*)
 
 ## Interpretation
 
-Two clean facts emerge from this run:
+The headline answer to "should we use jokers in this turn's combo, or
+save them?" is **spend them.** Using them in the same combos that
+Heuristic 13 picks is the right play; the more we restrict that, the
+worse we do, and the curve is monotonic in the budget `N`.
 
-1. **The curve is flat in `max`.** All five scenarios produce
-   bit-identical numbers — same wins, same decisions, same RNG
-   trajectory. That is the property that the original
-   ("must pay exactly N") design failed: under the "up-to-N" semantics,
-   a higher cap is a strict superset of options for the player, and
-   since the bot's optimal choice is k = 1, more options simply go
-   unused.
-2. **The refresh action itself is value-destructive at every cap.**
-   The bot loses ~32 pp of win rate against heuristic13 by ever using
-   refresh, even at k = 1 (the minimum-cost variant). That's worse
-   than the previous experiment's cost = 1 (−12 pp). The reason is
-   that the smaller per-use effect (swap 2 cards instead of burning
-   the whole hand) doesn't unstick the bot — it discards 1 of its
-   "useless" non-jokers, draws 2 random cards, often gets stuck
-   again, refreshes again, and so on. Excess `jokerrefresh` decisions
-   over its no-refresh baseline went from +777k under the old "burn
-   whole hand" design to +950k here, and total decisions across both
-   bots grew by ~10% (games run longer when jokerrefresh is losing
-   stock parity).
+Concretely:
 
-Putting (1) and (2) together: under this naive stuck-trigger policy,
-**no value of `max ≥ 1` is worth using — they are all equally bad,
-and they are bad because the bot uses them at all.** The flatness
-result confirms the user's intuition that "up-to-N" eliminates the
-non-monotonicity artefact of the previous design; the level of the
-flat line confirms that even k = 1 is an unfavourable trade for the
-*current* bot.
+1. **`N = 1` is a disaster (−14.23 pp).** Holding ≥ 2 jokers in hand is
+   reasonably common (full deck has 18 jokers in 162 cards, ~11%). At
+   `N=1`, every such turn forces the bot to skip joker-using stock or
+   hand-clear plays — which are exactly the highest-leverage moves
+   Heuristic 13 makes. Games drag on (h13 alone takes +301k extra
+   decisions) because the bot keeps stalling into discards.
+2. **`N = 2` is mildly bad (−1.38 pp).** Holding ≥ 3 jokers is rarer, so
+   suppression triggers less often, but when it does the bot is again
+   passing up a strong combo. h13's excess decisions: +44k.
+3. **`N ≥ 3` is indistinguishable from plain Heuristic 13.** Holding ≥ 4
+   jokers in a 5-card hand is uncommon and the marginal "save vs spend"
+   decision rarely matters; the win-rate hit dissolves into noise. By
+   `N = 5` the suppression branch is unreachable (joker_count ≤ hand_size
+   = 5), so the bot reproduces plain Heuristic 13 bit-for-bit.
 
-## Why this is consistent with the earlier experiment
-
-The earlier "fixed cost" run measured cost = 1 at −12.29 pp; this run
-measures the analogous k = 1 at −32.68 pp. Both use the same trigger
-condition ("stuck + ≥1 joker"), so frequency-of-use is similar, but
-the per-use effect differs:
-
-- **Old cost = 1**: pay 1 joker, burn the entire 5-card hand, redraw
-  5. Big per-use effect; one refresh resets you completely.
-- **New k = 1**: pay 1 joker + cycle 1 non-joker, redraw 2. Small
-  per-use effect; the rest of the hand still has the cards that made
-  you stuck, so you re-trigger immediately.
-
-So the new mechanic is *cheaper per use* but *less effective per use*,
-and the bot ends up using it more often per game (excess jr decisions
-grew from +777k to +950k). The win-rate hit grows correspondingly.
+So: jokers are most valuable when they are spent in the very combos
+Heuristic 13 already builds — using them to bridge a stock-progression
+prefix or to enable a full-hand-clear that triggers a redraw. There is
+no observable upside to hoarding them past those moments. The intuition
+behind hoarding ("save the wild card for an even bigger play") would
+need a smarter trigger than "I happen to have ≥ N+1 of them in hand
+right now" to overcome the cost of skipping the immediate combo.
 
 ## Caveats and possible follow-ups
 
-- **The bot is still naive.** It refreshes on every stuck turn. A
-  smarter policy that decides *whether* to refresh (rather than
-  always doing so when legal) could bring the result toward the
-  no-refresh baseline. The current run only establishes that the
-  trigger-when-stuck heuristic is wrong; it does not establish that
-  the mechanic is unwinnable.
-- **The engine picks which non-jokers to swap (leftmost first).**
-  Letting the bot pick the worst non-jokers (e.g. the ones with no
-  near-future plays) would make each refresh more useful per joker
-  spent. That extension widens the action space and is left as a
-  follow-up.
-- **All games use 1 v 1, `--stock-size 20`, `--max-turns 10000`.**
-  Larger stocks, multi-player tables, or different turn limits could
-  shift the value of cycling.
+- The "save" branch is blunt: it suppresses *any* joker play, including
+  cases where the joker would have been spent on a small advance with
+  modest value. A subtler bot might instead suppress only the costlier
+  joker uses (e.g. only refuse to consume a joker when the build pile
+  it's targeting is far from the stock value), which could move the
+  curve at intermediate `N`.
+- This is a 1 v 1 setup with `--stock-size 20`. Larger stocks or
+  multi-player tables change the value of stock-progress combos, and
+  could shift the cross-over point.
+- We compare against pure Heuristic 13. A meta-bot opponent that
+  exploits joker-hoarding (e.g. by aggressively running stock when
+  `jokertactic` is known to be saving) might widen the gap further.

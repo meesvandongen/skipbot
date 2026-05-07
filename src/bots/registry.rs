@@ -21,7 +21,7 @@ use crate::bots::heuristic_15::Heuristic15Bot;
 use crate::bots::heuristic_16::Heuristic16Bot;
 use crate::bots::heuristic_17::Heuristic17Bot;
 use crate::bots::heuristic_18::Heuristic18Bot;
-use crate::bots::joker_refresh::JokerRefreshBot;
+use crate::bots::joker_tactic::JokerTacticBot;
 use crate::{HeuristicBot, HumanBot, RandomBot};
 
 /// Returns a normalized label for a bot spec (the head token before any ':').
@@ -55,8 +55,9 @@ pub fn label_for_spec(spec: &str) -> String {
 /// - heuristic16
 /// - heuristic17
 /// - heuristic18
-/// - jokerrefresh   (combo-architect + opportunistic deck refresh; refresh cost
-///   comes from the game's `refresh_cost` setting)
+/// - jokertactic[:N]  (combo-architect with a joker-spending budget; if the
+///   hand currently holds more than `N` jokers (default `N=1`), no joker may
+///   be played this turn — they are saved for a later turn instead)
 pub fn create_bot_from_spec(
     spec: &str,
     index: usize,
@@ -109,8 +110,15 @@ pub fn create_bot_from_spec(
         Ok(Box::new(Heuristic17Bot::default()))
     } else if spec_lower.starts_with("heuristic18") {
         Ok(Box::new(Heuristic18Bot::default()))
-    } else if spec_lower.starts_with("jokerrefresh") {
-        Ok(Box::new(JokerRefreshBot::default()))
+    } else if spec_lower.starts_with("jokertactic") {
+        // Parameterised: jokertactic:N where N is the maximum number of
+        // jokers the bot is willing to spend in a single turn's combos.
+        // Falls back to N=1 if no parameter or an unparseable one is given.
+        let max_jokers = spec
+            .split_once(':')
+            .and_then(|(_, value)| value.trim().parse::<usize>().ok())
+            .unwrap_or(1);
+        Ok(Box::new(JokerTacticBot::new(max_jokers)))
     } else if spec_lower.starts_with("heuristic") {
         Ok(Box::new(HeuristicBot::default()))
     } else {

@@ -18,5 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # yeslogic-fontconfig-sys and freetype-sys link against system libraries
+      - run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libfreetype-dev
       - run: cargo build --locked
       - run: cargo test --locked

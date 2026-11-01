@@ -1,5 +1,5 @@
 use rand::Rng;
-use rand::seq::SliceRandom;
+use rand::seq::IndexedRandom;
 
 use crate::action::Action;
 use crate::bot::Bot;
